@@ -34,7 +34,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want identical errors grouped into one row with a count, so that one bug does not flood the list.
   Done when: two occurrences with the same exception module and first application frame but different messages produce one error with `occurrence_count` 2 and two occurrences, written in one transaction that also increments the hourly count.
 
-- [ ] **CAP-04 Asynchronous capture that drops under load** · needs: ERR-01, INS-05
+- [x] **CAP-04 Asynchronous capture that drops under load** · needs: ERR-01, INS-05
   As a developer, I want capture to be asynchronous and to drop events under load, so that the tracker can never slow or crash my app.
   Done when: handlers only build the event and cast it to the worker; with the worker's queue full, events are dropped and counted; an error inside Imison is logged, never captured.
 
