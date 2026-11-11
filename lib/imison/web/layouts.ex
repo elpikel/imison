@@ -36,9 +36,11 @@ defmodule Imison.Web.Layouts do
 
   @doc """
   The top bar with the main navigation, the Live indicator when `live` is
-  true, and the Sign out button, and the page below it.
+  true, and the Sign out button, and the page below it, headed by the
+  `info` and `error` flash messages.
   """
   attr(:dashboard_path, :string, required: true)
+  attr(:flash, :map, default: %{})
   attr(:live, :boolean, default: false)
   slot(:inner_block, required: true)
 
@@ -72,6 +74,8 @@ defmodule Imison.Web.Layouts do
       </div>
     </header>
     <main class="page">
+      <p :if={info = Phoenix.Flash.get(@flash, :info)} class="flash flash--info" role="status">{info}</p>
+      <p :if={error = Phoenix.Flash.get(@flash, :error)} class="flash flash--error" role="alert">{error}</p>
       {render_slot(@inner_block)}
     </main>
     """

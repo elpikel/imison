@@ -13,6 +13,9 @@ defmodule Imison.Web.Router do
         imison_dashboard "/errors"
       end
 
+  The error list is at `path` and each error's detail page at
+  `<path>/errors/<id>`.
+
   Every dashboard page asks for the login configured on the Imison instance
   (`username` and `password`): the login page at `<path>/login` signs in, and
   the Sign out button in the top bar posts to `<path>/logout`. The signed-in
@@ -66,6 +69,7 @@ defmodule Imison.Web.Router do
           on_mount: {Imison.Web.Auth, :require_sign_in},
           session: Router.__session__(opts, dashboard_path) do
           live "/", Imison.Web.ErrorsLive, :index, as: opts[:as]
+          live "/errors/:id", Imison.Web.ErrorLive, :show, as: opts[:as]
         end
       end
     end
