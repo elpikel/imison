@@ -1,4 +1,4 @@
-# Imision
+# Imison
 
 Error tracker shipped as a Hex library that runs inside a host Phoenix app, stores errors in the host's Postgres and serves a LiveView dashboard from the host's router. This repo is a plain Mix library, not a Phoenix app. Design and scope: `docs/PROJECT.md`. Domain language: `CONTEXT.md`.
 

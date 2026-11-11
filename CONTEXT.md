@@ -1,4 +1,4 @@
-# Imision
+# Imison
 
 An error tracker that runs inside a Phoenix app: it captures the app's errors, groups them, stores them in the app's own database and shows them on a dashboard mounted in the app's router.
 
@@ -7,15 +7,15 @@ An error tracker that runs inside a Phoenix app: it captures the app's errors, g
 ### Hosting
 
 **Host app**:
-The Phoenix application that depends on Imision and supplies its repo, PubSub, mailer and router.
+The Phoenix application that depends on Imison and supplies its repo, PubSub, mailer and router.
 _Avoid_: client app, parent app, project
 
 **Developer**:
-Whoever maintains the host app and uses the dashboard; the only kind of user Imision has.
+Whoever maintains the host app and uses the dashboard; the only kind of user Imison has.
 _Avoid_: user, admin, customer
 
 **Dashboard**:
-Imision's LiveView screens, mounted in the host app's router with `imision_dashboard`.
+Imison's LiveView screens, mounted in the host app's router with `imison_dashboard`.
 _Avoid_: admin panel, UI, web console
 
 ### Errors
@@ -63,7 +63,7 @@ _Avoid_: TTL, expiry
 ### Notifications
 
 **Channel**:
-A configured way of delivering notifications (email first), implemented by a module with the `Imision.Notifications.Channel` behaviour.
+A configured way of delivering notifications (email first), implemented by a module with the `Imison.Notifications.Channel` behaviour.
 _Avoid_: integration, provider, notifier
 
 **Rule**:

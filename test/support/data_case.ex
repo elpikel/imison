@@ -1,4 +1,4 @@
-defmodule Imision.DataCase do
+defmodule Imison.DataCase do
   @moduledoc """
   Test case for tests that touch the database.
 
@@ -12,12 +12,12 @@ defmodule Imision.DataCase do
 
   using do
     quote do
-      alias Imision.Test.Repo
+      alias Imison.Test.Repo
     end
   end
 
   setup tags do
-    owner = Sandbox.start_owner!(Imision.Test.Repo, shared: not tags[:async])
+    owner = Sandbox.start_owner!(Imison.Test.Repo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(owner) end)
     :ok
   end

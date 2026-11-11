@@ -1,4 +1,4 @@
-defmodule Imision.Test.Repo do
+defmodule Imison.Test.Repo do
   @moduledoc false
-  use Ecto.Repo, otp_app: :imision, adapter: Ecto.Adapters.Postgres
+  use Ecto.Repo, otp_app: :imison, adapter: Ecto.Adapters.Postgres
 end
