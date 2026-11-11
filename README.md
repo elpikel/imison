@@ -46,6 +46,14 @@ mix check          # everything above, as CI and before a commit
 
 Tests need Postgres at `postgres:postgres@localhost:5432`. `mix test` creates and migrates the `imision_test` database (`ecto.create` + `ecto.migrate`); it never drops it. With `MIX_TEST_PARTITION` set, the value is appended to the database name. After editing an unreleased `Imision.Migration` version, rebuild the database with `MIX_ENV=test mix ecto.reset`.
 
+To see Imision in a host app, keep a small Phoenix app in `dev/`: its own Mix project with a path dependency on Imision (`{:imision, path: ".."}`). `dev/` is gitignored and not in the repo, so each maintainer keeps their own.
+
+```sh
+cd dev && mix deps.get && mix dev
+```
+
+`mix dev` creates and migrates the `imision_dev` database and serves http://localhost:4000, which links to routes that raise sample errors.
+
 ## Docs
 
 - [`CONTEXT.md`](CONTEXT.md): domain language

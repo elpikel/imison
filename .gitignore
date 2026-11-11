@@ -25,3 +25,6 @@ imison-*.tar
 
 /.claude/work/
 /.claude/settings.local.json
+
+# Local development host app (its own Mix project, never committed).
+/dev/
