@@ -1,4 +1,4 @@
-defmodule Imision.Validation do
+defmodule Imison.Validation do
   @moduledoc false
 
   @spec validate_schema(opts :: keyword(), schema :: keyword()) :: :ok | {:error, String.t()}

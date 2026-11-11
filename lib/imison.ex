@@ -1,36 +1,36 @@
-defmodule Imision do
+defmodule Imison do
   @moduledoc """
   Error tracker that runs inside the host's Phoenix app.
 
-  Add Imision to the host's supervision tree, after its repo:
+  Add Imison to the host's supervision tree, after its repo:
 
       children = [
         MyApp.Repo,
-        {Imision, Application.fetch_env!(:my_app, Imision)}
+        {Imison, Application.fetch_env!(:my_app, Imison)}
       ]
 
   with its options in the host's config:
 
-      config :my_app, Imision,
+      config :my_app, Imison,
         repo: MyApp.Repo,
-        username: System.fetch_env!("IMISION_USER"),
-        password: System.fetch_env!("IMISION_PASSWORD")
+        username: System.fetch_env!("IMISON_USER"),
+        password: System.fetch_env!("IMISON_PASSWORD")
 
   `repo`, `username` and `password` are required. Every other option has a
-  default, see `Imision.Config`. Imision refuses to start with an
+  default, see `Imison.Config`. Imison refuses to start with an
   `ArgumentError` when an option is missing, unknown, duplicate or of the
   wrong type, so a bad config fails the host's boot.
   """
 
   use Supervisor
 
-  alias Imision.Config
-  alias Imision.Registry
+  alias Imison.Config
+  alias Imison.Registry
 
   @type name :: term()
 
   @doc """
-  Starts an Imision supervision tree, raising `ArgumentError` when the options are invalid.
+  Starts an Imison supervision tree, raising `ArgumentError` when the options are invalid.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) when is_list(opts) do
@@ -53,17 +53,17 @@ defmodule Imision do
   end
 
   @doc """
-  Returns the config of a running Imision instance.
+  Returns the config of a running Imison instance.
 
   ## Example
 
   The default instance:
 
-      %Imision.Config{} = Imision.config()
+      %Imison.Config{} = Imison.config()
 
   An instance started with a custom name:
 
-      %Imision.Config{} = Imision.config(MyApp.Imision)
+      %Imison.Config{} = Imison.config(MyApp.Imison)
   """
   @spec config(name()) :: Config.t()
   def config(name \\ __MODULE__), do: Registry.config(name)

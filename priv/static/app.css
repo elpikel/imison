@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Imision — app.css
+   Imison — app.css
    Plain CSS, no build step. Ship it inside the package (priv/static) and
    serve it from the dashboard routes, so the host app's asset pipeline is
    untouched.

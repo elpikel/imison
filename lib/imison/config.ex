@@ -1,13 +1,13 @@
-defmodule Imision.Config do
+defmodule Imison.Config do
   @moduledoc """
-  The validated options of a running Imision instance.
+  The validated options of a running Imison instance.
 
   `new/1` fills in defaults for options left out and raises `ArgumentError`
   when an option is missing, unknown, duplicate or of the wrong type, so a
   host app with a bad config fails to boot.
   """
 
-  alias Imision.Validation
+  alias Imison.Validation
 
   @type t :: %__MODULE__{
           name: term(),
@@ -22,13 +22,14 @@ defmodule Imision.Config do
           channels: [module()],
           enabled: boolean(),
           filter: [String.t()],
-          ignore: [module()]
+          ignore: [module()],
+          prefix: String.t()
         }
 
   @required_options [:repo, :username, :password]
 
   @enforce_keys @required_options
-  defstruct name: Imision,
+  defstruct name: Imison,
             repo: nil,
             username: nil,
             password: nil,
@@ -40,7 +41,8 @@ defmodule Imision.Config do
             channels: [],
             enabled: true,
             filter: ~w(password token secret authorization cookie),
-            ignore: []
+            ignore: [],
+            prefix: "public"
 
   @doc """
   Builds the config from the host's options, raising `ArgumentError` when they're invalid.
@@ -74,7 +76,8 @@ defmodule Imision.Config do
              channels: {:list, {:module, []}},
              enabled: :boolean,
              filter: {:list, :string},
-             ignore: {:list, {:module, [exception: 1]}}
+             ignore: {:list, {:module, [exception: 1]}},
+             prefix: :string
            ) do
       validate_required(opts)
     end

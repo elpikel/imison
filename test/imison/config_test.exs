@@ -1,8 +1,8 @@
-defmodule Imision.ConfigTest do
+defmodule Imison.ConfigTest do
   use ExUnit.Case, async: true
 
-  alias Imision.Config
-  alias Imision.Test.Repo
+  alias Imison.Config
+  alias Imison.Test.Repo
 
   defmodule Channel do
     @moduledoc false
@@ -18,7 +18,7 @@ defmodule Imision.ConfigTest do
     config = Config.new(repo: Repo, username: "admin", password: "secret")
 
     assert %Config{
-             name: Imision,
+             name: Imison,
              repo: Repo,
              username: "admin",
              password: "secret",
@@ -30,7 +30,8 @@ defmodule Imision.ConfigTest do
              channels: [],
              enabled: true,
              filter: ["password", "token", "secret", "authorization", "cookie"],
-             ignore: []
+             ignore: [],
+             prefix: "public"
            } = config
   end
 
@@ -49,7 +50,8 @@ defmodule Imision.ConfigTest do
         channels: [Channel],
         enabled: false,
         filter: ["api_key"],
-        ignore: [ArgumentError]
+        ignore: [ArgumentError],
+        prefix: "private"
       )
 
     assert %Config{
@@ -62,7 +64,8 @@ defmodule Imision.ConfigTest do
              channels: [Channel],
              enabled: false,
              filter: ["api_key"],
-             ignore: [ArgumentError]
+             ignore: [ArgumentError],
+             prefix: "private"
            } = config
   end
 
@@ -99,7 +102,7 @@ defmodule Imision.ConfigTest do
 
   test "a repo module that isn't loaded is refused naming :repo" do
     assert_raise ArgumentError, ~r/expected :repo to be a loaded module/, fn ->
-      Config.new(repo: Imision.Test.MissingRepo, username: "admin", password: "secret")
+      Config.new(repo: Imison.Test.MissingRepo, username: "admin", password: "secret")
     end
   end
 
@@ -142,6 +145,12 @@ defmodule Imision.ConfigTest do
   test "a from address that isn't a string is refused naming :from" do
     assert_raise ArgumentError, ~r/expected :from to be one of/, fn ->
       Config.new(repo: Repo, username: "admin", password: "secret", from: false)
+    end
+  end
+
+  test "a prefix that isn't a string is refused naming :prefix" do
+    assert_raise ArgumentError, ~r/expected :prefix to be a string, got: :private/, fn ->
+      Config.new(repo: Repo, username: "admin", password: "secret", prefix: :private)
     end
   end
 end
