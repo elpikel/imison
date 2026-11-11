@@ -4,41 +4,53 @@ defmodule Imison.Web.ErrorsLive do
   tab per status with its count, a search over kind, message and location,
   and the most recently seen errors first. The status and the search live in
   the URL (`?status=resolved&q=timeout`).
+
+  With the instance's `pubsub` set, the connected list subscribes to the
+  errors it records and reloads the page and counts at most once a second,
+  showing the design's Live indicator.
   """
 
   use Phoenix.LiveView
 
   alias Imison.Errors
+  alias Imison.Errors.Broadcast
   alias Imison.Errors.Error
   alias Imison.Web.Layouts
 
+  @live_reload_interval_ms 1_000
+
   @impl Phoenix.LiveView
   def mount(_params, %{"imison_name" => imison_name, "dashboard_path" => dashboard_path}, socket) do
+    conf = Imison.config(imison_name)
+
     {:ok,
      assign(socket,
-       conf: Imison.config(imison_name),
+       conf: conf,
        dashboard_path: dashboard_path,
-       page_title: "Errors"
+       page_title: "Errors",
+       live: connected?(socket) and Broadcast.subscribe(conf) == :ok,
+       live_reload: :idle
      )}
   end
 
   @impl Phoenix.LiveView
-  def handle_params(params, _uri, %{assigns: %{conf: conf}} = socket) do
-    status = status_from_param(params["status"])
-    search = search_from_param(params["q"])
-    now = DateTime.utc_now()
-    errors = Errors.list(conf, status: status, search: search)
-
+  def handle_params(params, _uri, socket) do
     {:noreply,
-     assign(socket,
-       status: status,
-       search: search,
-       errors: errors,
-       hourly_counts: Errors.hourly_counts(conf, Enum.map(errors, & &1.id), now),
-       counts: Errors.count_by_status(conf, search: search),
-       now: now
-     )}
+     socket
+     |> assign(status: status_from_param(params["status"]), search: search_from_param(params["q"]))
+     |> load_list()}
   end
+
+  @impl Phoenix.LiveView
+  def handle_info({:imison, :recorded, _error_id}, %{assigns: %{live_reload: :idle}} = socket),
+    do: {:noreply, reload_and_hold(socket)}
+
+  def handle_info({:imison, :recorded, _error_id}, socket), do: {:noreply, assign(socket, live_reload: :pending)}
+
+  def handle_info(:live_reload_hold_over, %{assigns: %{live_reload: :pending}} = socket),
+    do: {:noreply, reload_and_hold(socket)}
+
+  def handle_info(:live_reload_hold_over, socket), do: {:noreply, assign(socket, live_reload: :idle)}
 
   @impl Phoenix.LiveView
   def handle_event("search", params, %{assigns: assigns} = socket) do
@@ -49,7 +61,7 @@ defmodule Imison.Web.ErrorsLive do
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
-    <Layouts.app dashboard_path={@dashboard_path}>
+    <Layouts.app dashboard_path={@dashboard_path} live={@live}>
       <div class="page__head">
         <div>
           <h1 class="page__title">Errors</h1>
@@ -174,6 +186,26 @@ defmodule Imison.Web.ErrorsLive do
       <p class="empty__text">Errors you mark as {String.downcase(status_label(@status))} appear here.</p>
     </div>
     """
+  end
+
+  defp load_list(%{assigns: %{conf: conf, status: status, search: search}} = socket) do
+    now = DateTime.utc_now()
+    errors = Errors.list(conf, status: status, search: search)
+
+    assign(socket,
+      errors: errors,
+      hourly_counts: Errors.hourly_counts(conf, Enum.map(errors, & &1.id), now),
+      counts: Errors.count_by_status(conf, search: search),
+      now: now
+    )
+  end
+
+  defp reload_and_hold(socket) do
+    Process.send_after(self(), :live_reload_hold_over, @live_reload_interval_ms)
+
+    socket
+    |> load_list()
+    |> assign(live_reload: :holding)
   end
 
   defp status_from_param(param) do

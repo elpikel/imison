@@ -2,7 +2,7 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location, updating live when the host's PubSub is configured; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
@@ -101,6 +101,20 @@ The dashboard serves its own stylesheet, fonts and script under its path (`/erro
 Every dashboard page asks for the login set by the `username` and `password` options: without it, a visitor is redirected to the login page at `<path>/login` (`/errors/login` above), which, with its assets, is the only page open to everyone. A correct username and password redirect to the dashboard; a wrong one shows "Wrong username or password." and signs nothing in. Signing in stores a value derived from the configured username and password, keyed with the endpoint's `secret_key_base`, in the host's session cookie (never the credentials, and nothing in the database), so a visitor stays signed in on every node that shares `secret_key_base`, until the session ends or they sign out. The Sign out button in the top bar posts to `<path>/logout`, which clears that value from that browser's session and returns to the login page; it ends only that browser's session. Because the value depends only on the username, password and `secret_key_base`, a copy of the cookie stays valid elsewhere: changing the password (and restarting) is the only way to end every session.
 
 The dashboard's home page lists the errors of one status, most recently seen first (the 100 most recent; the foot says how many there are in all), each with its kind, message, location, number of occurrences and when it was last seen; an unresolved error that came back after being resolved is flagged "Back again". Tabs switch between Unresolved, Resolved and Ignored and show each one's count. The search box filters by text in the kind, message or location, case-insensitively and literally (`%` and `_` are plain characters), within the current tab; the counts follow the search. The status and the search are kept in the URL (`/errors?status=resolved&q=timeout`), so a filtered list can be bookmarked or shared.
+
+### Live updates
+
+Built today: set `pubsub` to the host's `Phoenix.PubSub` name (the one its endpoint's `pubsub_server` uses) and an open error list updates without a reload: a new error appears, a repeated one gets its new count, last seen and heat strip, and the tab counts follow. The top bar then shows a "Live" indicator.
+
+```elixir
+config :my_app, Imison,
+  repo: MyApp.Repo,
+  pubsub: MyApp.PubSub,
+  username: System.fetch_env!("IMISON_USER"),
+  password: System.fetch_env!("IMISON_PASSWORD")
+```
+
+Each recorded occurrence is broadcast on that PubSub under a topic per Imison instance; the list reloads at most once a second however many errors arrive, so a crash storm doesn't flood the browser. Without `pubsub` (the default) nothing is broadcast, there is no indicator and the list shows new errors when the page is reloaded. If no PubSub runs under that name, failed broadcasts and subscriptions are logged, recording is unaffected and the list still works, without the indicator or live updates. Updates reach lists open on other nodes only when the nodes share the PubSub (are clustered); see MN-04 in `docs/STORIES.md`.
 
 ### Capture off in tests
 

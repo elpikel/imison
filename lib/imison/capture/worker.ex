@@ -7,8 +7,11 @@ defmodule Imison.Capture.Worker do
   alias Imison.Capture.Filter
   alias Imison.Config
   alias Imison.Errors
+  alias Imison.Errors.Broadcast
+  alias Imison.Errors.Error
 
   @default_queue_limit 1_000
+  @broadcast_failure "Imison failed to broadcast a recorded error"
 
   @type registration :: %{dropped: :counters.counters_ref(), queue_limit: pos_integer()}
 
@@ -29,11 +32,30 @@ defmodule Imison.Capture.Worker do
 
   @impl GenServer
   def handle_cast({:record, event}, %Config{} = conf) do
-    if not ignored?(conf, event), do: record(conf, event)
+    if not ignored?(conf, event), do: record_and_broadcast(conf, event)
     {:noreply, conf}
   end
 
   defp ignored?(%Config{ignore: ignore}, %{kind: kind}), do: Enum.any?(ignore, &(inspect(&1) == kind))
+
+  defp record_and_broadcast(conf, event) do
+    with {:ok, %Error{id: error_id}} <- record(conf, event) do
+      broadcast_recorded(conf, error_id)
+    end
+  end
+
+  defp broadcast_recorded(conf, error_id) do
+    with {:error, reason} <- Broadcast.recorded(conf, error_id) do
+      FailureLog.error(@broadcast_failure, %{kind: :error, reason: reason, stacktrace: []})
+    end
+  catch
+    kind, reason ->
+      FailureLog.error(@broadcast_failure, %{
+        kind: kind,
+        reason: reason,
+        stacktrace: __STACKTRACE__
+      })
+  end
 
   defp record(%Config{release: release, filter: filter_words} = conf, event) do
     storable_event =
