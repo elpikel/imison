@@ -38,7 +38,9 @@ defmodule Imison.Registry do
   Find the `{pid, value}` pair registered for an Imison supervisor or one of its processes.
 
   Returns `nil` when nothing is registered under that name and role, including when
-  `Imison.Registry` itself isn't running (the `:imison` application isn't started).
+  `Imison.Registry` itself isn't running (the `:imison` application isn't started)
+  and when the registered process has exited but the registry hasn't removed its
+  entry yet.
 
   ## Example
 
@@ -48,7 +50,7 @@ defmodule Imison.Registry do
   def lookup(imison_name, role \\ nil) do
     __MODULE__
     |> Registry.lookup(key(imison_name, role))
-    |> List.first()
+    |> Enum.find(fn {pid, _value} -> Process.alive?(pid) end)
   rescue
     ArgumentError -> nil
   end

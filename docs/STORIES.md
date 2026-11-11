@@ -78,7 +78,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to set the dashboard username and password in environment variables, so that there is no account setup step.
   Done when: the credentials come only from config (set from `IMISON_USER` and `IMISON_PASSWORD`) and are compared with `Plug.Crypto.secure_compare/2`.
 
-- [ ] **AUTH-02 Sign in, stay signed in, sign out** · needs: AUTH-01
+- [x] **AUTH-02 Sign in, stay signed in, sign out** · needs: AUTH-01
   As a developer, I want to sign in once and stay signed in, and to sign out, so that the dashboard is private but not annoying.
   Done when: every dashboard route except login redirects to login without a session; a correct login sets a signed session cookie valid on every node; sign out clears it. Screen: `docs/design/login.html`.
 

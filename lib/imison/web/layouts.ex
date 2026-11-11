@@ -7,6 +7,7 @@ defmodule Imison.Web.Layouts do
   use Phoenix.Component
 
   alias Imison.Web.Assets
+  alias Imison.Web.Paths
   alias Phoenix.LiveView.Rendered
 
   @doc """
@@ -34,7 +35,7 @@ defmodule Imison.Web.Layouts do
   end
 
   @doc """
-  The top bar with the main navigation, and the page below it.
+  The top bar with the main navigation and the Sign out button, and the page below it.
   """
   attr(:dashboard_path, :string, required: true)
   slot(:inner_block, required: true)
@@ -59,6 +60,11 @@ defmodule Imison.Web.Layouts do
       <nav class="nav" aria-label="Main">
         <.link class="nav__link" navigate={@dashboard_path} aria-current="page">Errors</.link>
       </nav>
+      <div class="topbar__end">
+        <.form for={%{}} action={Paths.logout(@dashboard_path)} method="post">
+          <button class="btn btn--quiet btn--sm" type="submit">Sign out</button>
+        </.form>
+      </div>
     </header>
     <main class="page">
       {render_slot(@inner_block)}
