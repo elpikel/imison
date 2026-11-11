@@ -136,7 +136,7 @@ An error is a group; an occurrence is one event in that group. There are no proj
 
 | Table | Holds | Key fields |
 |---|---|---|
-| `imison_errors` | One group of matching occurrences | `fingerprint` (unique), `kind`, `message`, `location`, `status` (`unresolved`, `resolved`, `ignored`), `muted`, `first_seen_at`, `last_seen_at`, `occurrence_count` |
+| `imison_errors` | One group of matching occurrences | `fingerprint` (unique), `kind`, `message`, `location`, `status` (`unresolved`, `resolved`, `ignored`), `muted`, `first_seen_at`, `last_seen_at`, `occurrence_count`, `regressed_at` (when it last came back after being resolved) |
 | `imison_occurrences` | One event | `error_id`, `stacktrace` (jsonb), `context` (jsonb: request, metadata, runtime), `release`, `occurred_at` |
 | `imison_hourly_counts` | Events per error per hour, for the heat strips | `error_id`, `hour`, `count` |
 | `imison_channels` | One configured notification channel | `type` (email first), `enabled`, `config` (jsonb) |
@@ -167,7 +167,7 @@ Every node runs its own Imison supervisor and all of them write to the same Post
 | Dashboard and login | The load balancer picks a different node per request | Every node reads the same tables; the session cookie is signed with the shared `secret_key_base` |
 | Live updates | Without clustering, a broadcast stays on the node that caught the error | Host PubSub when the nodes are clustered; otherwise the dashboard refreshes from the database every few seconds |
 | "New error" notification | Each node that sees the error sends one | Only the node whose upsert inserted the row sends |
-| "Came back" notification | Each node that sees the regression sends one | Only the node whose `UPDATE ... WHERE status = 'resolved'` changed the row sends |
+| "Came back" notification | Each node that sees the regression sends one | Only the node whose upsert flipped the row from `resolved` sends (`record/2` tells it so) |
 | Throttled reminders and the daily digest | Every node's timer fires | A node first inserts a row in `imison_deliveries` under a unique index on (error, trigger, period) and sends only if the insert succeeded |
 | Pruning | Every node deletes old occurrences | Safe to repeat; the deletes are idempotent |
 | Failed-login slowdown | Attempts are spread over nodes | Counted in the database, not in node memory |

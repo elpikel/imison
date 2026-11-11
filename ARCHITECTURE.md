@@ -61,7 +61,7 @@ Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`, `telemetry`. Test onl
 
 All tables are owned by Imison, live in the host's database (schema `public` unless `prefix` says otherwise) and are prefixed `imison_`. Version 1 creates them; ids are `bigserial`, timestamps `utc_datetime_usec` (except `imison_hourly_counts.hour`, `utc_datetime`), status-like values text.
 
-- `imison_errors`: one row per fingerprint (unique index on `fingerprint`), with status, mute flag, first and last seen, occurrence count
+- `imison_errors`: one row per fingerprint (unique index on `fingerprint`), with status, mute flag, first and last seen, occurrence count and `regressed_at` (nullable: when a resolved error last came back; set in the same `ON CONFLICT` update that flips `resolved` to `unresolved`)
 - `imison_occurrences`: stack trace and context (jsonb), release, time; `error_id` cascades on delete; indexed on `(error_id, occurred_at)`
 - `imison_hourly_counts`: count per error per hour; unique `(error_id, hour)`; `error_id` cascades on delete
 - `imison_channels`: notification channel type, enabled flag, config (jsonb)
