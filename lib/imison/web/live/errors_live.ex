@@ -26,14 +26,17 @@ defmodule Imison.Web.ErrorsLive do
   def handle_params(params, _uri, %{assigns: %{conf: conf}} = socket) do
     status = status_from_param(params["status"])
     search = search_from_param(params["q"])
+    now = DateTime.utc_now()
+    errors = Errors.list(conf, status: status, search: search)
 
     {:noreply,
      assign(socket,
        status: status,
        search: search,
-       errors: Errors.list(conf, status: status, search: search),
+       errors: errors,
+       hourly_counts: Errors.hourly_counts(conf, Enum.map(errors, & &1.id), now),
        counts: Errors.count_by_status(conf, search: search),
-       now: DateTime.utc_now()
+       now: now
      )}
   end
 
@@ -80,6 +83,7 @@ defmodule Imison.Web.ErrorsLive do
         <.error_list
           :if={@errors != []}
           errors={@errors}
+          hourly_counts={@hourly_counts}
           total={@counts[@status]}
           now={@now}
         />
@@ -95,16 +99,17 @@ defmodule Imison.Web.ErrorsLive do
   end
 
   attr :errors, :list, required: true
+  attr :hourly_counts, :map, required: true
   attr :total, :integer, required: true
   attr :now, DateTime, required: true
 
   defp error_list(assigns) do
     ~H"""
     <div class="errors__head">
-      <span></span><span>Error</span><span></span><span style="text-align:right">Events</span><span style="text-align:right">Last seen</span>
+      <span></span><span>Error</span><span>Last 24 hours</span><span style="text-align:right">Events</span><span style="text-align:right">Last seen</span>
     </div>
     <ul class="errors">
-      <li :for={error <- @errors} class="error-row">
+      <li :for={error <- @errors} id={"error-#{error.id}"} class="error-row">
         <div class="error-row__main">
           <div class="error-row__title">
             <span class="error-row__kind truncate">{error.kind}</span>
@@ -115,11 +120,24 @@ defmodule Imison.Web.ErrorsLive do
             <span class="error-row__loc">{error.location}</span>
           </div>
         </div>
+        <.heat_strip counts={Map.fetch!(@hourly_counts, error.id)} />
         <span class="error-row__events">{with_thousands_separators(error.occurrence_count)}</span>
         <span class="error-row__seen">{time_ago(DateTime.diff(@now, error.last_seen_at))}</span>
       </li>
     </ul>
     <p class="errors__foot">{list_summary(length(@errors), @total)}</p>
+    """
+  end
+
+  attr :counts, :list, required: true
+
+  defp heat_strip(%{counts: counts} = assigns) do
+    assigns = assign(assigns, total: Enum.sum(counts), busiest: Enum.max(counts))
+
+    ~H"""
+    <div class="heat error-row__heat" role="img" aria-label={events_in_last_24_hours(@total)}>
+      <i :for={count <- @counts} data-l={heat_level(count, @busiest)}></i>
+    </div>
     """
   end
 
@@ -190,6 +208,12 @@ defmodule Imison.Web.ErrorsLive do
 
   defp back_again?(%Error{regressed_at: nil}), do: false
   defp back_again?(%Error{status: status}), do: status == :unresolved
+
+  defp heat_level(0, _busiest), do: nil
+  defp heat_level(count, busiest), do: div(count * 4 + busiest - 1, busiest)
+
+  defp events_in_last_24_hours(1), do: "1 event in the last 24 hours"
+  defp events_in_last_24_hours(total), do: "#{with_thousands_separators(total)} events in the last 24 hours"
 
   defp with_thousands_separators(number) do
     number

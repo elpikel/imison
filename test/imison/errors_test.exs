@@ -47,6 +47,62 @@ defmodule Imison.ErrorsTest do
            ]
   end
 
+  test "hourly counts cover the 24 hours ending with the current hour, oldest first, with zeros for quiet hours" do
+    conf = config()
+    now = ~U[2026-11-11 14:35:00.000000Z]
+
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-10 15:59:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 09:10:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 09:50:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 14:00:00.000000Z]))
+
+    assert Errors.hourly_counts(conf, [error.id], now) == %{
+             error.id => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1]
+           }
+  end
+
+  test "hourly counts leave out hours older than the last 24" do
+    conf = config()
+    now = ~U[2026-11-11 14:35:00.000000Z]
+
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-10 14:59:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-09 18:00:00.000000Z]))
+
+    assert Errors.hourly_counts(conf, [error.id], now) == %{error.id => List.duplicate(0, 24)}
+  end
+
+  test "hourly counts are kept apart per error" do
+    conf = config()
+    now = ~U[2026-11-11 14:35:00.000000Z]
+
+    {:ok, busy} = Errors.record(conf, occurrence(kind: "KeyError", occurred_at: ~U[2026-11-11 14:01:00.000000Z]))
+    {:ok, _busy} = Errors.record(conf, occurrence(kind: "KeyError", occurred_at: ~U[2026-11-11 14:02:00.000000Z]))
+    {:ok, quiet} = Errors.record(conf, occurrence(kind: "ArgumentError", occurred_at: ~U[2026-11-11 13:00:00.000000Z]))
+
+    assert Errors.hourly_counts(conf, [busy.id, quiet.id], now) == %{
+             busy.id => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+             quiet.id => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+           }
+  end
+
+  test "with a configured prefix the hourly counts are read from that schema" do
+    PrivatePrefix.migrate_up()
+    conf = config(prefix: PrivatePrefix.name())
+
+    {:ok, error} =
+      Errors.record(
+        conf,
+        occurrence(
+          kind: "Imison.PrefixError#{System.unique_integer([:positive])}",
+          occurred_at: ~U[2026-11-11 14:10:00.000000Z]
+        )
+      )
+
+    assert Errors.hourly_counts(conf, [error.id], ~U[2026-11-11 14:35:00.000000Z]) == %{
+             error.id => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+           }
+  end
+
   test "the same kind raised from different application frames is two errors" do
     conf = config()
 
