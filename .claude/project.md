@@ -13,7 +13,7 @@ Imision is a **library**, not a Phoenix app: it has no endpoint, router or repo 
 | OTP app | `:imision` |
 | Context root | `lib/imision/` (`Imision.*`) |
 | Web root | `lib/imision/web/` (`Imision.Web.*`) |
-| Repo | none of its own: the host's repo, passed as the `repo:` option; the `dev/` app's repo in development |
+| Repo | none of its own: the host's repo, passed as the `repo:` option; the `dev/` app's repo in development; `Imision.Test.Repo` (`test/support/repo.ex`) in tests |
 
 ## Git and tracking
 
@@ -30,7 +30,7 @@ Imision is a **library**, not a Phoenix app: it has no endpoint, router or repo 
 | Setting | Value |
 |---|---|
 | Dev DB (never migrate or roll back) | none yet (the `dev/` host app's database, once it exists) |
-| Test DB (`mix test` migrates it) | none yet (a test repo is added with the first schema) |
+| Test DB (`mix test` migrates it) | `imision_test` (suffixed with `MIX_TEST_PARTITION` when set) at `postgres:postgres@localhost:5432`; `mix test` creates and migrates it, never drops it |
 | Table prefixes (by owner) | `imision_` (all Imision-owned, created in the host's database by `Imision.Migration`) |
 
 ## Tooling
@@ -50,7 +50,7 @@ Imision is a **library**, not a Phoenix app: it has no endpoint, router or repo 
 | Setting | Value |
 |---|---|
 | Endpoint test case | n/a (no controllers; LiveView tests go through a test endpoint, added with the first LiveView) |
-| Data test case | none yet (added with the first schema) |
+| Data test case | `Imision.DataCase` (`test/support/data_case.ex`): SQL sandbox, `async: true` ok |
 | Endpoint test file | n/a |
 | LiveView test file | `test/imision/web/live/<live_view>_test.exs` |
 | Module test file | `test/imision/…` mirroring `lib/imision/…` |

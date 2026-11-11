@@ -7,6 +7,7 @@ defmodule Imision.MixProject do
       version: "0.1.0",
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
       aliases: aliases()
     ]
@@ -23,8 +24,12 @@ defmodule Imision.MixProject do
     ]
   end
 
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
+
   defp aliases do
     [
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       check: [
         "compile --warnings-as-errors --force",
         "deps.unlock --check-unused",
@@ -39,7 +44,9 @@ defmodule Imision.MixProject do
   defp deps do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:ecto_sql, "~> 3.14"},
       {:ex_slop, "~> 0.4.5", only: [:dev, :test], runtime: false},
+      {:postgrex, "~> 0.22"},
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false}
     ]
   end

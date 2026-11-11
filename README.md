@@ -2,11 +2,11 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. Only the `mix new` skeleton exists; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. Only the `mix new` skeleton, an `Imision.Migration` stub and the test database exist; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Planned: Phoenix LiveView for the dashboard, Ecto/Postgres through the host's repo, telemetry for capture; optional Swoosh (email), Oban (job-failure capture) and Igniter (installer).
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imision uses the host's repo). Planned: Phoenix LiveView for the dashboard, telemetry for capture; optional Swoosh (email), Oban (job-failure capture) and Igniter (installer).
 
 ## Installation (planned)
 
@@ -43,6 +43,8 @@ mix format
 mix credo --strict
 mix check          # everything above, as CI and before a commit
 ```
+
+Tests need Postgres at `postgres:postgres@localhost:5432`. `mix test` creates and migrates the `imision_test` database (`ecto.create` + `ecto.migrate`); it never drops it. With `MIX_TEST_PARTITION` set, the value is appended to the database name. After editing an unreleased `Imision.Migration` version, rebuild the database with `MIX_ENV=test mix ecto.reset`.
 
 ## Docs
 
