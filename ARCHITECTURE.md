@@ -10,6 +10,8 @@ Imision's own tests run against Postgres. `test/support/` (compiled only in `:te
 
 The dashboard stylesheet and its bundled fonts are in `priv/static/`, with mockups in `docs/design/`. Tooling is in place: Styler (`.formatter.exs`), Credo with ExSlop (`.credo.exs`).
 
+`.gitignore` excludes `dev/`, where each maintainer keeps a local Phoenix host app for development; it is not in the repo (see the README).
+
 ## Stack
 
 Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`. Planned: `phoenix_live_view`, `jason`, `telemetry`; optional `swoosh`, `oban`, `igniter`. Imision has no endpoint, router or repo of its own; the host app supplies them.
@@ -28,7 +30,7 @@ Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`. Planned: `phoenix_liv
 | `lib/mix/tasks/imision.install.ex` | Igniter installer |
 | `priv/static/` | `app.css` (exists) and a prebuilt `app.js`, committed; `fonts/` holds the bundled WOFF2 files and their OFL licenses |
 | `docs/design/` | Static HTML mockups of the dashboard screens, styled by `priv/static/app.css`: the reference for LiveView markup and class names |
-| `dev/` | Small Phoenix host app for development; not published |
+| `dev/` | Small Phoenix host app for development: local and gitignored, its own Mix project with a path dependency on Imision; not in the repo or the Hex package |
 | `test/imision/…` | Tests mirroring `lib/imision/…` |
 | `test/support/` | Test-only modules: `Imision.Test.Repo` (`repo.ex`), `Imision.DataCase` (`data_case.ex`) |
 | `test/support/postgres/migrations/` | Wrapper migrations for the test repo that call `Imision.Migration`, as a host app does; each released version gets its own |

@@ -14,8 +14,8 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a maintainer, I want a test repo on Postgres with the SQL sandbox, so that schemas, upserts and migrations are tested against a real database.
   Done when: `mix test` creates and migrates a test database through `Imision.Migration` and runs tests in the sandbox.
 
-- [ ] **DEV-02 Development host app** · needs: DEV-01
-  As a maintainer, I want a small Phoenix app under `dev/` that starts an endpoint, a repo and Imision and can raise sample errors, so that I can see the dashboard working.
+- [x] **DEV-02 Development host app** · needs: DEV-01
+  As a maintainer, I want a small Phoenix app under `dev/` that hosts Imision and can raise sample errors, so that I can see Imision working the way a host app runs it.
   Done when: one command starts the app, a page or task raises sample errors, and `dev/` is excluded from the Hex package.
 
 ## Phase 1: smallest version worth installing

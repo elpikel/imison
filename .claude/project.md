@@ -2,7 +2,7 @@
 
 The kit's commands, agents and skills are generic Elixir/Phoenix. Everything specific to this repo lives here. Edit by hand when a fact changes.
 
-Imision is a **library**, not a Phoenix app: it has no endpoint, router or repo of its own. The host app supplies them; during development the Phoenix app under `dev/` (not built yet) plays the host. Rows below that a Phoenix app would fill point at the host or at `dev/`.
+Imision is a **library**, not a Phoenix app: it has no endpoint, router or repo of its own. The host app supplies them; during development the Phoenix app under `dev/` (local, gitignored) plays the host. Rows below that a Phoenix app would fill point at the host or at `dev/`.
 
 ## App
 
@@ -29,7 +29,7 @@ Imision is a **library**, not a Phoenix app: it has no endpoint, router or repo 
 
 | Setting | Value |
 |---|---|
-| Dev DB (never migrate or roll back) | none yet (the `dev/` host app's database, once it exists) |
+| Dev DB (never migrate or roll back) | `imision_dev`, the local `dev/` app's database at `postgres:postgres@localhost:5432`; `mix dev` in `dev/` creates and migrates it (agents never migrate or roll it back) |
 | Test DB (`mix test` migrates it) | `imision_test` (suffixed with `MIX_TEST_PARTITION` when set) at `postgres:postgres@localhost:5432`; `mix test` creates and migrates it, never drops it |
 | Table prefixes (by owner) | `imision_` (all Imision-owned, created in the host's database by `Imision.Migration`) |
 
