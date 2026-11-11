@@ -152,12 +152,4 @@ defmodule Imison.Capture.LoggerHandlerTest do
 
     assert recorded(message) == []
   end
-
-  defp wait_for_exit(pid) do
-    ref = Process.monitor(pid)
-
-    receive do
-      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
-    end
-  end
 end

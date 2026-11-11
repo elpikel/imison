@@ -51,7 +51,9 @@ defmodule Imison do
 
   @impl Supervisor
   def init(%Config{} = conf) do
-    Supervisor.init([{Imison.Capture.Worker, conf: conf}, {Imison.Capture.Handlers, conf: conf}], strategy: :one_for_one)
+    conf
+    |> capture_children()
+    |> Supervisor.init(strategy: :one_for_one)
   end
 
   @doc """
@@ -101,6 +103,12 @@ defmodule Imison do
   catch
     kind, reason ->
       FailureLog.error("Imison failed to report an exception", %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
+  end
+
+  defp capture_children(%Config{enabled: false}), do: []
+
+  defp capture_children(%Config{} = conf) do
+    [{Imison.Capture.Worker, conf: conf}, {Imison.Capture.Handlers, conf: conf}]
   end
 
   defp metadata_map(metadata) when is_map(metadata), do: metadata

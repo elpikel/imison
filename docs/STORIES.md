@@ -51,7 +51,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want sensitive params and headers filtered before storage, so that passwords and tokens never reach the database.
   Done when: keys from `filter` (default `password`, `token`, `secret`, `authorization`, `cookie`), at any depth in params, headers and metadata, are stored as `[FILTERED]`.
 
-- [ ] **INS-06 Capture off in tests** · needs: CAP-01
+- [x] **INS-06 Capture off in tests** · needs: CAP-01
   As a developer, I want capture switched off in tests, so that expected failures do not fill the database.
   Done when: with `enabled: false`, no handlers are attached and `report/3` writes nothing.
 
