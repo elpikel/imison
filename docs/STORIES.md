@@ -10,7 +10,7 @@ IDs: `DEV` setup, `INS` installation, `CAP` capture, `AUTH` auth, `ERR` errors, 
 
 These are not in the design's story list; every phase 1 story needs them to be built and tested.
 
-- [ ] **DEV-01 Test database for Imision's own tests** · needs: none
+- [x] **DEV-01 Test database for Imision's own tests** · needs: none
   As a maintainer, I want a test repo on Postgres with the SQL sandbox, so that schemas, upserts and migrations are tested against a real database.
   Done when: `mix test` creates and migrates a test database through `Imision.Migration` and runs tests in the sandbox.
 

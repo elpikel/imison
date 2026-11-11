@@ -4,11 +4,15 @@ Imision is a plain Mix library (OTP app `:imision`) that runs inside a host Phoe
 
 ## What exists
 
-Nothing beyond the `mix new` skeleton: `lib/imision.ex` and its test. The dashboard stylesheet and its bundled fonts are in `priv/static/`, with mockups in `docs/design/`. Tooling is in place: Styler (`.formatter.exs`), Credo with ExSlop (`.credo.exs`).
+The `mix new` skeleton (`lib/imision.ex` and its test) and `Imision.Migration` (`lib/imision/migration.ex`): `up/1` and `down/1` are no-ops until version 1 arrives (INS-02), so they change nothing.
+
+Imision's own tests run against Postgres. `test/support/` (compiled only in `:test`) holds `Imision.Test.Repo`, configured in `config/test.exs` with the SQL sandbox; `Imision.DataCase`, which checks out a sandbox connection per test; and a wrapper migration in `test/support/postgres/migrations/` that calls `Imision.Migration`, as a host app's migration does. `mix test` creates and migrates the `imision_test` database.
+
+The dashboard stylesheet and its bundled fonts are in `priv/static/`, with mockups in `docs/design/`. Tooling is in place: Styler (`.formatter.exs`), Credo with ExSlop (`.credo.exs`).
 
 ## Stack
 
-Elixir 1.20. Planned runtime dependencies: `phoenix_live_view`, `ecto_sql`, `postgrex`, `jason`, `telemetry`; optional `swoosh`, `oban`, `igniter`. Imision has no endpoint, router or repo of its own; the host app supplies them.
+Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`. Planned: `phoenix_live_view`, `jason`, `telemetry`; optional `swoosh`, `oban`, `igniter`. Imision has no endpoint, router or repo of its own; the host app supplies them.
 
 ## Where new code goes
 
@@ -26,10 +30,12 @@ Elixir 1.20. Planned runtime dependencies: `phoenix_live_view`, `ecto_sql`, `pos
 | `docs/design/` | Static HTML mockups of the dashboard screens, styled by `priv/static/app.css`: the reference for LiveView markup and class names |
 | `dev/` | Small Phoenix host app for development; not published |
 | `test/imision/…` | Tests mirroring `lib/imision/…` |
+| `test/support/` | Test-only modules: `Imision.Test.Repo` (`repo.ex`), `Imision.DataCase` (`data_case.ex`) |
+| `test/support/postgres/migrations/` | Wrapper migrations for the test repo that call `Imision.Migration`, as a host app does; each released version gets its own |
 
 ## Data
 
-All tables are owned by Imision, live in the host's database and are prefixed `imision_`: `errors`, `occurrences`, `hourly_counts`, `channels`, `rules`, `deliveries`. None exist yet.
+All tables are owned by Imision, live in the host's database and are prefixed `imision_`: `errors`, `occurrences`, `hourly_counts`, `channels`, `rules`, `deliveries`. None exist yet: `Imision.Migration` has no versions, so the test database holds only `schema_migrations`.
 
 ## Decisions
 
