@@ -11,9 +11,9 @@ defmodule Imison.Test.CaptureHelpers do
   alias Imison.Errors.Occurrence
   alias Imison.Test.Repo
 
-  @spec start_imison(keyword()) :: reference()
+  @spec start_imison(keyword()) :: Imison.name()
   def start_imison(opts \\ []) do
-    name = make_ref()
+    {name, opts} = Keyword.pop_lazy(opts, :name, &make_ref/0)
     ExUnit.Callbacks.start_supervised!({Imison, [name: name, repo: Repo, username: "admin", password: "secret"] ++ opts})
     name
   end

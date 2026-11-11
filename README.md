@@ -2,7 +2,7 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, except exceptions listed in `ignore`. There is no dashboard yet; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`. There is no dashboard yet; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
@@ -58,6 +58,22 @@ end
 ```
 
 `up()` without a version migrates to the latest version. To keep the tables in a separate Postgres schema, pass `prefix:` to both calls (`Imison.Migration.up(version: 1, prefix: "imison")`; the schema is created when missing) and set the same `prefix` option in Imison's config (default `"public"`).
+
+### Reporting rescued exceptions
+
+Built today: crashes are captured without code changes; an exception the app rescues itself is tracked when it calls `Imison.report/3` in the `rescue`:
+
+```elixir
+try do
+  MyApp.Orders.charge(order)
+rescue
+  exception ->
+    Imison.report(exception, __STACKTRACE__, %{order_id: order.id})
+    {:error, :charge_failed}
+end
+```
+
+The metadata (a map or a keyword list, optional) is stored under `metadata` in the occurrence's context, filtered like every other context. `report/3` records in the background and always returns `:ok`: it never raises or blocks, and does nothing when no Imison instance runs. It reports to the default instance, named `Imison`; instances started with a custom `name` aren't reachable from `report/3` yet.
 
 ## Development
 

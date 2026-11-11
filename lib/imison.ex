@@ -24,6 +24,8 @@ defmodule Imison do
 
   use Supervisor
 
+  alias Imison.Capture
+  alias Imison.Capture.FailureLog
   alias Imison.Config
   alias Imison.Registry
 
@@ -67,4 +69,40 @@ defmodule Imison do
   """
   @spec config(name()) :: Config.t()
   def config(name \\ __MODULE__), do: Registry.config(name)
+
+  @doc """
+  Reports an exception the app rescued itself, so handled errors are tracked too.
+
+  `metadata` (a map or a keyword list) is stored under `metadata` in the
+  occurrence's context, with keys from the `filter` option replaced by
+  `[FILTERED]`. A value that isn't an exception, such as an Erlang error
+  term, is normalized to its exception first.
+
+  The report goes to the default instance, named `Imison`. It is recorded in
+  the background, like a captured crash: `report/3` always returns `:ok`, never
+  raises and never blocks, and does nothing when no instance runs or the
+  exception is listed in `ignore`.
+
+  ## Example
+
+      try do
+        MyApp.Orders.charge(order)
+      rescue
+        exception ->
+          Imison.report(exception, __STACKTRACE__, %{order_id: order.id})
+          {:error, :charge_failed}
+      end
+  """
+  @spec report(Exception.t() | term(), Exception.stacktrace(), map() | keyword()) :: :ok
+  def report(exception, stacktrace, metadata \\ %{}) do
+    event = Capture.event(%{kind: :error, reason: exception, stacktrace: stacktrace}, %{metadata: metadata_map(metadata)})
+
+    Capture.capture(__MODULE__, event)
+  catch
+    kind, reason ->
+      FailureLog.error("Imison failed to report an exception", %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
+  end
+
+  defp metadata_map(metadata) when is_map(metadata), do: metadata
+  defp metadata_map(metadata) when is_list(metadata), do: Map.new(metadata)
 end
