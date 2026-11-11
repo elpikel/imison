@@ -4,7 +4,9 @@ Imision is a plain Mix library (OTP app `:imision`) that runs inside a host Phoe
 
 ## What exists
 
-The `mix new` skeleton (`lib/imision.ex` and its test) and `Imision.Migration` (`lib/imision/migration.ex`): `up/1` and `down/1` are no-ops until version 1 arrives (INS-02), so they change nothing.
+The `Imision` supervisor (`lib/imision.ex`), which a host starts with `{Imision, opts}` in its supervision tree; `child_spec/1` uses the `name` option (default `Imision`) as the id. `start_link/1` builds an `Imision.Config` struct (`lib/imision/config.ex`) holding every documented option with its default; `Config.new/1` raises `ArgumentError` on a missing, unknown, duplicate or wrongly typed option, so a bad config fails the host's boot. Type checks are in `Imision.Validation` (`lib/imision/validation.ex`, internal), modelled on `Oban.Validation`. The supervisor registers in `Imision.Registry` (`lib/imision/registry.ex`, a unique-key `Registry` started by `Imision.Application`) with the config as its value; `Imision.config/1` reads it back by name. The supervisor has no children yet.
+
+`Imision.Migration` (`lib/imision/migration.ex`): `up/1` and `down/1` are no-ops until version 1 arrives (INS-02), so they change nothing.
 
 Imision's own tests run against Postgres. `test/support/` (compiled only in `:test`) holds `Imision.Test.Repo`, configured in `config/test.exs` with the SQL sandbox; `Imision.DataCase`, which checks out a sandbox connection per test; and a wrapper migration in `test/support/postgres/migrations/` that calls `Imision.Migration`, as a host app's migration does. `mix test` creates and migrates the `imision_test` database.
 
@@ -20,7 +22,11 @@ Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`. Planned: `phoenix_liv
 
 | Path | Holds |
 |---|---|
-| `lib/imision.ex` | The `Imision` supervisor, config validation, `report/3` |
+| `lib/imision.ex` | The `Imision` supervisor, `config/1`, `report/3` |
+| `lib/imision/application.ex` | Imision's OTP application: starts `Imision.Registry` |
+| `lib/imision/config.ex` | `%Imision.Config{}`: every option with its default, `new/1` and `validate/1` |
+| `lib/imision/validation.ex` | Internal option-schema checks behind `Config.validate/1` |
+| `lib/imision/registry.ex` | Registry of Imision instances and their processes; holds each instance's config |
 | `lib/imision/migration.ex` | Versioned `up/down` for the `imision_` tables |
 | `lib/imision/capture/` | `:logger` handler, Phoenix and Oban telemetry handlers, capture worker |
 | `lib/imision/errors/` | Schemas, fingerprint, upsert, pruner |

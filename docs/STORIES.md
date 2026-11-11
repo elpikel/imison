@@ -22,7 +22,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
 
 ### Core and capture
 
-- [ ] **INS-05 Refuse to start on bad config** · needs: none
+- [x] **INS-05 Refuse to start on bad config** · needs: none
   As a developer, I want Imision to refuse to start with a clear message when a required option is missing, so that a bad config shows up at boot.
   Done when: `{Imision, opts}` without `repo`, `username` or `password` fails to start with a message naming the missing option; unknown options are rejected too.
 

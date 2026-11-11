@@ -2,7 +2,7 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. Only the `mix new` skeleton, an `Imision.Migration` stub and the test database exist; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. Only the `Imision` supervisor with validated config (read back with `Imision.config/1`), an `Imision.Migration` stub and the test database exist; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
@@ -26,12 +26,23 @@ The installer, the manual steps and every option are in [`docs/PROJECT.md`](docs
 
 ## Configuration
 
-The host app sets these in `config/runtime.exs`:
+Built today: add Imision to the host's supervision tree, after its repo, and set its options in `config/runtime.exs`.
 
-| Variable | For | Without it |
-|---|---|---|
-| `IMISION_USER` | Dashboard login username | Imision refuses to start |
-| `IMISION_PASSWORD` | Dashboard login password | Imision refuses to start |
+```elixir
+# application.ex
+children = [
+  MyApp.Repo,
+  {Imision, Application.fetch_env!(:my_app, Imision)}
+]
+
+# config/runtime.exs
+config :my_app, Imision,
+  repo: MyApp.Repo,
+  username: System.fetch_env!("IMISION_USER"),
+  password: System.fetch_env!("IMISION_PASSWORD")
+```
+
+`repo`, `username` and `password` are required; every other option has a default (`Imision.Config`). Imision never reads environment variables itself: with `IMISION_USER` or `IMISION_PASSWORD` unset, the host's `System.fetch_env!` raises while loading `config/runtime.exs`. A missing, unknown, duplicate or wrongly typed option raises an `ArgumentError` from Imision. Either way the host fails to boot.
 
 ## Development
 
