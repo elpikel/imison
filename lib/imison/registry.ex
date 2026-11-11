@@ -23,15 +23,34 @@ defmodule Imison.Registry do
   """
   @spec config(Imison.name()) :: Imison.Config.t()
   def config(imison_name) do
-    case Registry.lookup(__MODULE__, imison_name) do
-      [{_pid, config} | _] ->
+    case lookup(imison_name) do
+      {_pid, config} ->
         config
 
-      [] ->
+      nil ->
         raise RuntimeError, """
         No Imison instance named `#{inspect(imison_name)}` is running and config isn't available.
         """
     end
+  end
+
+  @doc """
+  Find the `{pid, value}` pair registered for an Imison supervisor or one of its processes.
+
+  Returns `nil` when nothing is registered under that name and role, including when
+  `Imison.Registry` itself isn't running (the `:imison` application isn't started).
+
+  ## Example
+
+      Imison.Registry.lookup(Imison, Imison.Capture.Worker)
+  """
+  @spec lookup(Imison.name(), role()) :: nil | {pid(), value()}
+  def lookup(imison_name, role \\ nil) do
+    __MODULE__
+    |> Registry.lookup(key(imison_name, role))
+    |> List.first()
+  rescue
+    ArgumentError -> nil
   end
 
   @doc """
