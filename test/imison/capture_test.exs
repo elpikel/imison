@@ -32,6 +32,30 @@ defmodule Imison.CaptureTest do
     assert [%{release: "2.4.1"}] = recorded(kind)
   end
 
+  test "the occurrence of a captured event carries the name of the node that captured it" do
+    name = make_ref()
+    kind = unique_kind()
+    start_supervised!({Imison, name: name, repo: Repo, username: "admin", password: "secret"})
+
+    Capture.capture(name, event(kind: kind))
+
+    wait_for_worker(name)
+    assert [%{context: %{"runtime" => %{"node" => node_name}}}] = recorded(kind)
+    assert node_name == Atom.to_string(node())
+  end
+
+  test "a runtime given in a captured event's context is replaced by the node that captured it" do
+    name = make_ref()
+    kind = unique_kind()
+    start_supervised!({Imison, name: name, repo: Repo, username: "admin", password: "secret"})
+
+    Capture.capture(name, event(kind: kind, context: %{runtime: %{node: "spoofed@host"}, metadata: %{step: "payment"}}))
+
+    wait_for_worker(name)
+    assert [%{context: context}] = recorded(kind)
+    assert context == %{"runtime" => %{"node" => Atom.to_string(node())}, "metadata" => %{"step" => "payment"}}
+  end
+
   test "events captured while the worker's queue is full are dropped and counted" do
     name = make_ref()
     kind = unique_kind()
@@ -91,7 +115,8 @@ defmodule Imison.CaptureTest do
     |> select([error: error, occurrence: occurrence], %{
       message: error.message,
       occurrence_count: error.occurrence_count,
-      release: occurrence.release
+      release: occurrence.release,
+      context: occurrence.context
     })
     |> distinct(true)
     |> Repo.all()

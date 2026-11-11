@@ -39,6 +39,7 @@ defmodule Imison.Capture.Worker do
     storable_event =
       event
       |> Map.update(:context, %{}, &(&1 |> Filter.filter(filter_words) |> json_safe()))
+      |> put_in([:context, "runtime"], runtime())
       |> Map.put(:release, release)
 
     Errors.record(conf, storable_event)
@@ -50,6 +51,8 @@ defmodule Imison.Capture.Worker do
         stacktrace: __STACKTRACE__
       })
   end
+
+  defp runtime, do: %{"node" => Atom.to_string(node())}
 
   defp json_safe(value) when is_binary(value) do
     if String.valid?(value), do: value, else: inspect(value)

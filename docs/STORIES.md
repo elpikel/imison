@@ -64,7 +64,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   Done when: concurrent upserts of the same fingerprint from separate processes produce one error with the summed count and no lost increments.
   Delivered with ERR-01: errors are upserted with SQL-side increments.
 
-- [ ] **MN-03 Node of each occurrence** · needs: ERR-01
+- [x] **MN-03 Node of each occurrence** · needs: ERR-01
   As a developer, I want to see which node each occurrence came from, so that I can spot a single bad instance.
   Done when: each occurrence stores the node name in its runtime context.
 
