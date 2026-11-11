@@ -3,10 +3,10 @@ defmodule Imison.Capture.Worker do
 
   use GenServer
 
+  alias Imison.Capture.FailureLog
+  alias Imison.Capture.Filter
   alias Imison.Config
   alias Imison.Errors
-
-  require Logger
 
   @default_queue_limit 1_000
 
@@ -29,17 +29,43 @@ defmodule Imison.Capture.Worker do
 
   @impl GenServer
   def handle_cast({:record, event}, %Config{} = conf) do
-    record(conf, event)
+    if not ignored?(conf, event), do: record(conf, event)
     {:noreply, conf}
   end
 
-  defp record(%Config{release: release} = conf, event) do
-    Errors.record(conf, Map.put(event, :release, release))
+  defp ignored?(%Config{ignore: ignore}, %{kind: kind}), do: Enum.any?(ignore, &(inspect(&1) == kind))
+
+  defp record(%Config{release: release, filter: filter_words} = conf, event) do
+    storable_event =
+      event
+      |> Map.update(:context, %{}, &(&1 |> Filter.filter(filter_words) |> json_safe()))
+      |> Map.put(:release, release)
+
+    Errors.record(conf, storable_event)
   catch
     kind, reason ->
-      Logger.error(
-        "Imison failed to record a captured event: " <> Exception.format(kind, reason, __STACKTRACE__),
-        domain: [:imison]
-      )
+      FailureLog.error("Imison failed to record a captured event", %{
+        kind: kind,
+        reason: reason,
+        stacktrace: __STACKTRACE__
+      })
   end
+
+  defp json_safe(value) when is_binary(value) do
+    if String.valid?(value), do: value, else: inspect(value)
+  end
+
+  defp json_safe(value) when is_atom(value) or is_number(value), do: value
+  defp json_safe(%_struct{} = struct), do: inspect(struct)
+  defp json_safe(map) when is_map(map), do: Map.new(map, fn {key, value} -> {json_safe_key(key), json_safe(value)} end)
+
+  defp json_safe(list) when is_list(list) do
+    if List.improper?(list), do: inspect(list), else: Enum.map(list, &json_safe/1)
+  end
+
+  defp json_safe(value), do: inspect(value)
+
+  defp json_safe_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp json_safe_key(key) when is_binary(key), do: json_safe(key)
+  defp json_safe_key(key), do: inspect(key)
 end

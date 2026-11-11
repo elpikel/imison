@@ -2,11 +2,11 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. Only the `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1) and the test database exist; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, except exceptions listed in `ignore`. There is no dashboard yet; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo). Planned: Phoenix LiveView for the dashboard, telemetry for capture; optional Swoosh (email), Oban (job-failure capture) and Igniter (installer).
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo) and `telemetry` (Phoenix and Oban capture). Planned: Phoenix LiveView for the dashboard; optional Swoosh (email) and Igniter (installer). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
 
 ## Installation (planned)
 

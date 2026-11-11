@@ -1,5 +1,5 @@
 defmodule ImisonTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Imison.Config
   alias Imison.Test.Repo
