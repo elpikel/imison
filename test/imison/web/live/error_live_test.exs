@@ -7,6 +7,7 @@ defmodule Imison.Web.ErrorLiveTest do
   alias Imison.Capture
   alias Imison.Errors
   alias Imison.Errors.Error
+  alias Imison.Errors.Occurrence
   alias Imison.Test.Dashboard
   alias Imison.Test.Repo
 
@@ -99,6 +100,65 @@ defmodule Imison.Web.ErrorLiveTest do
              %{function: "Checkout.Orders.place/2", location: "lib/checkout/orders.ex:54"},
              %{function: ":erlang.apply/2", location: ""}
            ]
+  end
+
+  test "frames from the host app's modules are shown open as application frames and dependency frames are muted" do
+    start_imison(name: Dashboard, enabled: false)
+
+    error =
+      record(
+        stacktrace: [
+          {Imison.Config, :new, 1, [file: ~c"lib/imison/config.ex", line: 10]},
+          {Ecto.Repo, :insert, 2, [file: ~c"lib/ecto/repo.ex", line: 7]},
+          {Imison.Migration, :up, 1, [file: ~c"lib/imison/migration.ex", line: 20]},
+          {:erlang, :apply, 2, []}
+        ]
+      )
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    assert frame_markings(view) == [
+             %{function: "Imison.Config.new/1", style: "frame--app", open: true},
+             %{function: "Ecto.Repo.insert/2", style: "frame--dep", open: false},
+             %{function: "Imison.Migration.up/1", style: "frame--app", open: true},
+             %{function: ":erlang.apply/2", style: "frame--dep", open: false}
+           ]
+
+    assert has_element?(view, ".panel__head .muted", "The teal edge marks frames in your code")
+  end
+
+  test "a frame marked as an application frame when captured keeps its marking after its module is renamed" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(stacktrace: [{Imison.Config, :new, 1, [file: ~c"lib/imison/config.ex", line: 10]}])
+
+    set_stored_frames(error, [
+      %{
+        "module" => "Imison.RenamedSinceCapture",
+        "function" => "new",
+        "arity" => 1,
+        "file" => "lib/imison/config.ex",
+        "line" => 10,
+        "application" => true
+      }
+    ])
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    assert frame_markings(view) == [%{function: "Imison.RenamedSinceCapture.new/1", style: "frame--app", open: true}]
+  end
+
+  test "a frame stored before frames were marked is shown as a dependency frame" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(stacktrace: [{Imison.Config, :new, 1, [file: ~c"lib/imison/config.ex", line: 10]}])
+
+    set_stored_frames(error, [
+      %{"module" => "Imison.Config", "function" => "new", "arity" => 1, "file" => "lib/imison/config.ex", "line" => 10}
+    ])
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    assert frame_markings(view) == [%{function: "Imison.Config.new/1", style: "frame--dep", open: false}]
+    refute has_element?(view, ".panel__head .muted", "The teal edge marks frames in your code")
   end
 
   test "the detail page shows the request, logger metadata and runtime of the latest occurrence" do
@@ -266,6 +326,13 @@ defmodule Imison.Web.ErrorLiveTest do
     |> Repo.update_all(set: [status: status])
   end
 
+  defp set_stored_frames(%Error{id: error_id}, stored_frames) do
+    Occurrence
+    |> from(as: :occurrence)
+    |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
+    |> Repo.update_all(set: [stacktrace: stored_frames])
+  end
+
   defp error_with_message(message) do
     Error
     |> from(as: :error)
@@ -296,6 +363,26 @@ defmodule Imison.Web.ErrorLiveTest do
         location: summary |> LazyHTML.query(".frame__loc") |> LazyHTML.text()
       }
     end)
+  end
+
+  defp frame_markings(view) do
+    view
+    |> document()
+    |> LazyHTML.query("details.frame")
+    |> Enum.map(fn frame ->
+      %{
+        function: frame |> LazyHTML.query(".frame__fn") |> LazyHTML.text(),
+        style: frame_style(frame),
+        open: LazyHTML.attribute(frame, "open") != []
+      }
+    end)
+  end
+
+  defp frame_style(frame) do
+    frame
+    |> LazyHTML.attribute("class")
+    |> Enum.flat_map(&String.split/1)
+    |> Enum.find(&(&1 in ["frame--app", "frame--dep"]))
   end
 
   defp panel_titles(view) do

@@ -98,7 +98,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to open an error and see the message, stack trace, request, metadata and runtime, so that I can reproduce it.
   Done when: the detail page shows the latest occurrence's stack trace and its request, metadata and runtime context (incl. node and release). Screen: `docs/design/error-detail.html`.
 
-- [ ] **ERR-06 Application frames first** · needs: ERR-05
+- [x] **ERR-06 Application frames first** · needs: ERR-05
   As a developer, I want my application's frames distinguished from dependency frames, so that I find my code first.
   Done when: frames from the host app's own modules are styled as application frames and dependency frames are muted.
 
