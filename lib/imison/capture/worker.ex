@@ -29,9 +29,11 @@ defmodule Imison.Capture.Worker do
 
   @impl GenServer
   def handle_cast({:record, event}, %Config{} = conf) do
-    record(conf, event)
+    if not ignored?(conf, event), do: record(conf, event)
     {:noreply, conf}
   end
+
+  defp ignored?(%Config{ignore: ignore}, %{kind: kind}), do: Enum.any?(ignore, &(inspect(&1) == kind))
 
   defp record(%Config{release: release} = conf, event) do
     Errors.record(conf, Map.put(event, :release, release))

@@ -49,7 +49,7 @@ defmodule Imison do
 
   @impl Supervisor
   def init(%Config{} = conf) do
-    Supervisor.init([{Imison.Capture.Worker, conf: conf}], strategy: :one_for_one)
+    Supervisor.init([{Imison.Capture.Worker, conf: conf}, {Imison.Capture.Handlers, conf: conf}], strategy: :one_for_one)
   end
 
   @doc """
