@@ -12,7 +12,7 @@ defmodule Imison.ReportTest do
 
     wait_for_worker(Imison)
     assert [%{kind: "RuntimeError", context: context, stacktrace: [frame | _]}] = recorded(message)
-    assert context == %{"metadata" => %{"order_id" => 42}}
+    assert context == %{"metadata" => %{"order_id" => 42}, "runtime" => %{"node" => Atom.to_string(node())}}
     assert frame["module"] == inspect(__MODULE__)
     assert frame["function"] == "place_order"
   end
