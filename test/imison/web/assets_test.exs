@@ -7,7 +7,7 @@ defmodule Imison.Web.AssetsTest do
 
   test "the stylesheet is served under the mount path with a long cache lifetime" do
     start_imison(name: Dashboard, enabled: false)
-    page = browser_conn() |> get("/errors") |> html_response(200)
+    page = browser_conn() |> get("/errors/login") |> html_response(200)
 
     conn = get(browser_conn(), page_asset(page, "link[rel=stylesheet]", "href"))
 
@@ -18,7 +18,7 @@ defmodule Imison.Web.AssetsTest do
 
   test "the fonts the stylesheet links to are served next to it" do
     start_imison(name: Dashboard, enabled: false)
-    page = browser_conn() |> get("/errors") |> html_response(200)
+    page = browser_conn() |> get("/errors/login") |> html_response(200)
     stylesheet = page_asset(page, "link[rel=stylesheet]", "href")
     stylesheet_body = browser_conn() |> get(stylesheet) |> response(200)
 
@@ -32,7 +32,7 @@ defmodule Imison.Web.AssetsTest do
 
   test "every font the stylesheet links to is served" do
     start_imison(name: Dashboard, enabled: false)
-    page = browser_conn() |> get("/errors") |> html_response(200)
+    page = browser_conn() |> get("/errors/login") |> html_response(200)
     stylesheet = page_asset(page, "link[rel=stylesheet]", "href")
     stylesheet_body = browser_conn() |> get(stylesheet) |> response(200)
 
@@ -45,7 +45,7 @@ defmodule Imison.Web.AssetsTest do
 
   test "the script that connects the LiveView socket is served under the mount path" do
     start_imison(name: Dashboard, enabled: false)
-    page = browser_conn() |> get("/errors") |> html_response(200)
+    page = browser_conn() |> get("/errors/login") |> html_response(200)
 
     conn = get(browser_conn(), page_asset(page, "script[src]", "src"))
 
@@ -56,7 +56,7 @@ defmodule Imison.Web.AssetsTest do
 
   test "the assets are served under any mount path" do
     start_imison(name: Dashboard, enabled: false)
-    page = browser_conn() |> get("/admin/errors") |> html_response(200)
+    page = browser_conn() |> get("/admin/errors/login") |> html_response(200)
     stylesheet = page_asset(page, "link[rel=stylesheet]", "href")
     script = page_asset(page, "script[src]", "src")
     stylesheet_body = browser_conn() |> get(stylesheet) |> response(200)
@@ -70,7 +70,7 @@ defmodule Imison.Web.AssetsTest do
 
   test "an asset under an outdated digest is not found" do
     start_imison(name: Dashboard, enabled: false)
-    page = browser_conn() |> get("/errors") |> html_response(200)
+    page = browser_conn() |> get("/errors/login") |> html_response(200)
     stylesheet = page_asset(page, "link[rel=stylesheet]", "href")
 
     outdated = String.replace(stylesheet, ~r{/assets/[^/]+/}, "/assets/outdated/")
@@ -80,7 +80,7 @@ defmodule Imison.Web.AssetsTest do
 
   test "an unknown asset is not found" do
     start_imison(name: Dashboard, enabled: false)
-    page = browser_conn() |> get("/errors") |> html_response(200)
+    page = browser_conn() |> get("/errors/login") |> html_response(200)
     stylesheet = page_asset(page, "link[rel=stylesheet]", "href")
 
     unknown = String.replace(stylesheet, "app.css", "fonts/unknown.woff2")

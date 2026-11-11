@@ -15,7 +15,11 @@ defmodule Imison.Test.CaptureHelpers do
   @spec start_imison(keyword()) :: Imison.name()
   def start_imison(opts \\ []) do
     {name, opts} = Keyword.pop_lazy(opts, :name, &make_ref/0)
-    ExUnit.Callbacks.start_supervised!({Imison, [name: name, repo: Repo, username: "admin", password: "secret"] ++ opts})
+
+    ExUnit.Callbacks.start_supervised!(
+      {Imison, Keyword.merge([name: name, repo: Repo, username: "admin", password: "secret"], opts)}
+    )
+
     name
   end
 

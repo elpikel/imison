@@ -13,6 +13,13 @@ defmodule Imison.Web.Router do
         imison_dashboard "/errors"
       end
 
+  Every dashboard page asks for the login configured on the Imison instance
+  (`username` and `password`): the login page at `<path>/login` signs in, and
+  the Sign out button in the top bar posts to `<path>/logout`. The signed-in
+  state lives in the host's session, so the `:browser` pipeline must fetch the
+  session and protect from forgery, as a Phoenix app generated with
+  `mix phx.new` does.
+
   The dashboard serves its own stylesheet, fonts and script under the same
   path, so the host's asset pipeline is untouched. The host's endpoint needs
   the LiveView socket at `/live`, as a Phoenix app generated with LiveView has.
@@ -40,15 +47,24 @@ defmodule Imison.Web.Router do
     quote bind_quoted: [path: path, opts: opts] do
       opts = Imison.Web.Router.__options__(opts)
       dashboard_path = Phoenix.Router.scoped_path(__MODULE__, path)
+      private = Imison.Web.Router.__private__(opts, dashboard_path)
 
       scope path, alias: false, as: false do
         import Phoenix.LiveView.Router, only: [live: 4, live_session: 3]
 
+        alias Imison.Web.Router
+        alias Imison.Web.SessionController
+
         get "/assets/:digest/*asset", Imison.Web.Assets, [], as: nil
+
+        get "/login", SessionController, :new, as: nil, private: private
+        post "/login", SessionController, :create, as: nil, private: private
+        post "/logout", SessionController, :delete, as: nil, private: private
 
         live_session opts[:as],
           root_layout: {Imison.Web.Layouts, :root},
-          session: Imison.Web.Router.__session__(opts, dashboard_path) do
+          on_mount: {Imison.Web.Auth, :require_sign_in},
+          session: Router.__session__(opts, dashboard_path) do
           live "/", Imison.Web.ErrorsLive, :index, as: opts[:as]
         end
       end
@@ -62,6 +78,10 @@ defmodule Imison.Web.Router do
   @doc false
   @spec __session__(keyword(), String.t()) :: map()
   def __session__(opts, dashboard_path), do: %{"imison_name" => opts[:imison_name], "dashboard_path" => dashboard_path}
+
+  @doc false
+  @spec __private__(keyword(), String.t()) :: map()
+  def __private__(opts, dashboard_path), do: %{imison_name: opts[:imison_name], imison_dashboard_path: dashboard_path}
 
   defp expand_alias({:__aliases__, _meta, _parts} = alias, env),
     do: Macro.expand(alias, %{env | function: {:imison_dashboard, 2}})

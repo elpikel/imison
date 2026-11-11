@@ -2,7 +2,7 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard` and serves its own assets, but shows only an empty error list so far; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, but shows only an empty error list so far; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
@@ -42,7 +42,7 @@ config :my_app, Imison,
   password: System.fetch_env!("IMISON_PASSWORD")
 ```
 
-`repo`, `username` and `password` are required; every other option has a default (`Imison.Config`). `username` and `password` are the dashboard login: they live only in config, are never stored in the database, and a sign-in is checked against both with `Plug.Crypto.secure_compare/2` (the login form arrives with AUTH-02). Imison never reads environment variables itself: with `IMISON_USER` or `IMISON_PASSWORD` unset, the host's `System.fetch_env!` raises while loading `config/runtime.exs`. A missing, unknown, duplicate or wrongly typed option raises an `ArgumentError` from Imison. Either way the host fails to boot.
+`repo`, `username` and `password` are required; every other option has a default (`Imison.Config`). `username` and `password` are the dashboard login: they live only in config, are never stored in the database, and a sign-in is checked against both with `Plug.Crypto.secure_compare/2`. Imison never reads environment variables itself: with `IMISON_USER` or `IMISON_PASSWORD` unset, the host's `System.fetch_env!` raises while loading `config/runtime.exs`. A missing, unknown, duplicate or wrongly typed option raises an `ArgumentError` from Imison. Either way the host fails to boot.
 
 ### Migration
 
@@ -77,7 +77,7 @@ The metadata (a map or a keyword list, optional) is stored under `metadata` in t
 
 ### Mounting the dashboard
 
-Built today: import `Imison.Web.Router` in the host's router and call `imison_dashboard` inside a scope that pipes through the `:browser` pipeline (session and CSRF protection), at any path:
+Built today: import `Imison.Web.Router` in the host's router and call `imison_dashboard` inside a scope that pipes through the `:browser` pipeline, at any path. That pipeline must `fetch_session` and `protect_from_forgery`, as the one `mix phx.new` generates does: the login lives in the host's session and its forms carry the host's CSRF token.
 
 ```elixir
 # lib/my_app_web/router.ex
@@ -96,7 +96,9 @@ The host's endpoint needs the LiveView socket at `/live` with the session in its
 socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 ```
 
-The dashboard serves its own stylesheet, fonts and script under its path (`/errors/assets/…`, with digested URLs cached for a year), so the host's asset pipeline is unchanged and the page makes no third-party requests. Options: `imison_name:` names the Imison instance the dashboard reads (default `Imison`, for an instance started with a custom `name`), and `as:` names the route and its `live_session` (default `:imison_dashboard`; give each a different one to mount the dashboard twice in one router). The page raises when no instance runs under that name. There is no login yet (AUTH-02): until then, mount it only where the host already restricts access. Add `:imison` to `import_deps` in the host's `.formatter.exs` to format the macro without parentheses.
+The dashboard serves its own stylesheet, fonts and script under its path (`/errors/assets/…`, with digested URLs cached for a year), so the host's asset pipeline is unchanged and the page makes no third-party requests. Options: `imison_name:` names the Imison instance the dashboard reads (default `Imison`, for an instance started with a custom `name`), and `as:` names the route and its `live_session` (default `:imison_dashboard`; give each a different one to mount the dashboard twice in one router). The page raises when no instance runs under that name. Add `:imison` to `import_deps` in the host's `.formatter.exs` to format the macro without parentheses.
+
+Every dashboard page asks for the login set by the `username` and `password` options: without it, a visitor is redirected to the login page at `<path>/login` (`/errors/login` above), which, with its assets, is the only page open to everyone. A correct username and password redirect to the dashboard; a wrong one shows "Wrong username or password." and signs nothing in. Signing in stores a value derived from the configured username and password, keyed with the endpoint's `secret_key_base`, in the host's session cookie (never the credentials, and nothing in the database), so a visitor stays signed in on every node that shares `secret_key_base`, until the session ends or they sign out. The Sign out button in the top bar posts to `<path>/logout`, which clears that value from that browser's session and returns to the login page; it ends only that browser's session. Because the value depends only on the username, password and `secret_key_base`, a copy of the cookie stays valid elsewhere: changing the password (and restarting) is the only way to end every session.
 
 ### Capture off in tests
 
