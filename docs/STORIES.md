@@ -82,7 +82,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to sign in once and stay signed in, and to sign out, so that the dashboard is private but not annoying.
   Done when: every dashboard route except login redirects to login without a session; a correct login sets a signed session cookie valid on every node; sign out clears it. Screen: `docs/design/login.html`.
 
-- [ ] **ERR-02 Filter by status and search** · needs: AUTH-02, ERR-01
+- [x] **ERR-02 Filter by status and search** · needs: AUTH-02, ERR-01
   As a developer, I want to filter the list by status and to search by text, so that I can find what matters.
   Done when: tabs for unresolved, resolved and ignored show their counts, and search matches kind, message and location. Screen: `docs/design/errors.html`.
 

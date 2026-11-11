@@ -26,6 +26,7 @@ defmodule Imison.Migrations.Postgres.V01 do
     end
 
     create_if_not_exists unique_index(:imison_errors, [:fingerprint], prefix: prefix)
+    create_if_not_exists index(:imison_errors, [:status, :last_seen_at], prefix: prefix)
 
     create_if_not_exists table(:imison_occurrences, primary_key: false, prefix: prefix) do
       add :id, :bigserial, primary_key: true
