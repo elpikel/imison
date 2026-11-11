@@ -22,4 +22,10 @@ defmodule Imison.Errors.Error do
 
     timestamps()
   end
+
+  @spec statuses() :: [atom()]
+  def statuses, do: Ecto.Enum.values(__MODULE__, :status)
+
+  @spec default_status() :: atom()
+  def default_status, do: %__MODULE__{}.status
 end

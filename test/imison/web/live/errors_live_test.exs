@@ -1,9 +1,16 @@
 defmodule Imison.Web.ErrorsLiveTest do
   use Imison.ConnCase, async: false
 
+  import Ecto.Query
   import Imison.Test.CaptureHelpers
 
+  alias Imison.Errors
+  alias Imison.Errors.Error
   alias Imison.Test.Dashboard
+  alias Imison.Test.Repo
+
+  @listed_kinds ".error-row .error-row__kind"
+  @flagged_kinds ".error-row__title:has(.flag--regressed) .error-row__kind"
 
   test "the dashboard mounted with imison_dashboard serves the error list page" do
     start_imison(name: Dashboard, enabled: false)
@@ -76,5 +83,362 @@ defmodule Imison.Web.ErrorsLiveTest do
     assert_raise RuntimeError, ~r/No Imison instance named `Imison.Test.Dashboard` is running/, fn ->
       live(browser_conn(), "/errors")
     end
+  end
+
+  test "the list shows the unresolved errors, most recently seen first" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError", occurred_at: minutes_ago(30))
+    record(kind: "ArgumentError", occurred_at: minutes_ago(5))
+    [kind: "MatchError"] |> record() |> set_status(:resolved)
+    [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert texts(view, @listed_kinds) == ["ArgumentError", "KeyError"]
+    assert has_element?(view, ".tabs__item[aria-current=true]", "Unresolved")
+  end
+
+  test "each row shows the kind, message, location, occurrence count and when it was last seen" do
+    start_imison(name: Dashboard, enabled: false)
+
+    record(
+      kind: "KeyError",
+      message: "key :customer_id not found",
+      stacktrace: [frame("lib/checkout/invoice_mailer.ex")],
+      occurred_at: minutes_ago(20)
+    )
+
+    record(
+      kind: "KeyError",
+      message: "key :order_id not found",
+      stacktrace: [frame("lib/checkout/invoice_mailer.ex")],
+      occurred_at: minutes_ago(5)
+    )
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".error-row .error-row__kind", "KeyError")
+    assert has_element?(view, ".error-row .error-row__message", "key :order_id not found")
+    assert has_element?(view, ".error-row .error-row__loc", "lib/checkout/invoice_mailer.ex:10")
+    assert has_element?(view, ".error-row .error-row__events", "2")
+    assert has_element?(view, ".error-row .error-row__seen", "5 min ago")
+  end
+
+  test "large occurrence counts are shown with thousands separators" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "DBConnection.ConnectionError")
+
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.id == ^error.id)
+    |> Repo.update_all(set: [occurrence_count: 1_804_250])
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".error-row .error-row__events", "1,804,250")
+  end
+
+  test "when an error was last seen reads in seconds, minutes, hours or days" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError", occurred_at: DateTime.utc_now())
+    record(kind: "ArgumentError", occurred_at: minutes_ago(3 * 60))
+    record(kind: "MatchError", occurred_at: minutes_ago(2 * 24 * 60))
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".error-row .error-row__seen", "just now")
+    assert has_element?(view, ".error-row .error-row__seen", "3 h ago")
+    assert has_element?(view, ".error-row .error-row__seen", "2 d ago")
+  end
+
+  test "the list shows the 100 most recently seen errors and says how many there are in all" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "OldestError", occurred_at: minutes_ago(500))
+    for minutes <- 1..100, do: record(kind: "Error#{minutes}", occurred_at: minutes_ago(minutes))
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert texts(view, @listed_kinds) == Enum.map(1..100, &"Error#{&1}")
+    assert has_element?(view, ".errors__foot", "The 100 most recently seen of 101 errors")
+  end
+
+  test "the list says how many errors it shows" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    record(kind: "ArgumentError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".errors__foot", "2 errors")
+  end
+
+  test "tabs for Unresolved, Resolved and Ignored show how many errors each holds" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    record(kind: "ArgumentError")
+    [kind: "MatchError"] |> record() |> set_status(:resolved)
+    [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
+    [kind: "Postgrex.Error"] |> record() |> set_status(:ignored)
+    [kind: "ExitError"] |> record() |> set_status(:ignored)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert tab_counts(view) == %{"Unresolved" => "2", "Resolved" => "1", "Ignored" => "3"}
+  end
+
+  test "picking the Resolved tab lists only resolved errors and puts the choice in the URL" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    [kind: "MatchError"] |> record() |> set_status(:resolved)
+    [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    view |> element(".tabs__item", "Resolved") |> render_click()
+
+    assert_patch(view, "/errors?status=resolved")
+    assert texts(view, @listed_kinds) == ["MatchError"]
+    assert has_element?(view, ".tabs__item[aria-current=true]", "Resolved")
+  end
+
+  test "picking the Ignored tab lists only ignored errors and puts the choice in the URL" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    [kind: "MatchError"] |> record() |> set_status(:resolved)
+    [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    view |> element(".tabs__item", "Ignored") |> render_click()
+
+    assert_patch(view, "/errors?status=ignored")
+    assert texts(view, @listed_kinds) == ["Jason.DecodeError"]
+  end
+
+  test "opening a URL with a status shows that tab" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+
+    assert texts(view, @listed_kinds) == ["Jason.DecodeError"]
+    assert has_element?(view, ".tabs__item[aria-current=true]", "Ignored")
+  end
+
+  test "picking the Unresolved tab goes back to the dashboard's plain URL" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+
+    view |> element(".tabs__item", "Unresolved") |> render_click()
+
+    assert_patch(view, "/errors")
+    assert texts(view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "searching for text in a message shows only matching errors, case-insensitively, and puts the search in the URL" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "DBConnection.ConnectionError", message: "connection not available, request dropped from queue")
+    record(kind: "KeyError", message: "key :customer_id not found")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    view |> form(".toolbar", q: "Request Dropped") |> render_change()
+
+    assert_patch(view, "/errors?q=Request+Dropped")
+    assert texts(view, @listed_kinds) == ["DBConnection.ConnectionError"]
+  end
+
+  test "searching for text in a kind shows only matching errors" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "Ecto.NoResultsError")
+    record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=noresults")
+
+    assert texts(view, @listed_kinds) == ["Ecto.NoResultsError"]
+  end
+
+  test "searching for text in a location shows only matching errors" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError", stacktrace: [frame("lib/checkout/shipping/rates.ex")])
+    record(kind: "ArgumentError", stacktrace: [frame("lib/checkout/cart.ex")])
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=SHIPPING/rates")
+
+    assert texts(view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "the search only shows matching errors in the current tab and the URL keeps both" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError", message: "timeout while charging")
+    [kind: "MatchError", message: "timeout while shipping"] |> record() |> set_status(:resolved)
+    [kind: "ArgumentError", message: "bad currency"] |> record() |> set_status(:resolved)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+
+    view |> form(".toolbar", q: "timeout") |> render_change()
+
+    assert_patch(view, "/errors?status=resolved&q=timeout")
+    assert texts(view, @listed_kinds) == ["MatchError"]
+  end
+
+  test "the tab counts follow the search" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError", message: "timeout while charging")
+    record(kind: "ArgumentError", message: "bad currency")
+    [kind: "MatchError", message: "timeout while shipping"] |> record() |> set_status(:resolved)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=timeout")
+
+    assert tab_counts(view) == %{"Unresolved" => "1", "Resolved" => "1", "Ignored" => "0"}
+  end
+
+  test "switching tabs keeps the search" do
+    start_imison(name: Dashboard, enabled: false)
+    [kind: "MatchError", message: "timeout while shipping"] |> record() |> set_status(:resolved)
+    [kind: "ArgumentError", message: "bad currency"] |> record() |> set_status(:resolved)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=timeout")
+
+    view |> element(".tabs__item", "Resolved") |> render_click()
+
+    assert_patch(view, "/errors?status=resolved&q=timeout")
+    assert texts(view, @listed_kinds) == ["MatchError"]
+  end
+
+  test "a percent sign in the search matches only a literal percent sign" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "File.Error", message: "disk 100% full")
+    record(kind: "KeyError", message: "key :customer_id not found")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=%25")
+
+    assert texts(view, @listed_kinds) == ["File.Error"]
+  end
+
+  test "an underscore in the search matches only a literal underscore" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError", message: "key :customer_id not found")
+    record(kind: "File.Error", message: "disk 100% full")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=_")
+
+    assert texts(view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "a backslash in the search matches only a literal backslash" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "File.Error", message: ~S(cannot open C:\tmp\report.csv))
+    record(kind: "KeyError", message: "key :customer_id not found")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=%5C")
+
+    assert texts(view, @listed_kinds) == ["File.Error"]
+  end
+
+  test "a tab without errors shows the empty state" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+
+    assert texts(view, @listed_kinds) == []
+    assert has_element?(view, ".panel .empty .empty__title", "No resolved errors")
+  end
+
+  test "a search without matches shows the empty state" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=nothing+like+this")
+
+    assert texts(view, @listed_kinds) == []
+    assert has_element?(view, ".panel .empty .empty__title", "No matching errors")
+  end
+
+  test "a search given as a list in the URL shows the unfiltered list" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q[]=nothing")
+
+    assert texts(view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "a search given as a map in the URL shows the unfiltered list" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q[text]=nothing")
+
+    assert texts(view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "an unresolved error that came back after being resolved shows the Back again flag" do
+    start_imison(name: Dashboard, enabled: false)
+    [kind: "DBConnection.ConnectionError"] |> record() |> set_status(:resolved)
+    record(kind: "DBConnection.ConnectionError")
+    record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert texts(view, @flagged_kinds) == ["DBConnection.ConnectionError"]
+    assert has_element?(view, ".error-row .flag--regressed", "Back again")
+  end
+
+  test "an error that came back and was then ignored has no Back again flag" do
+    start_imison(name: Dashboard, enabled: false)
+    [kind: "DBConnection.ConnectionError"] |> record() |> set_status(:resolved)
+    [kind: "DBConnection.ConnectionError"] |> record() |> set_status(:ignored)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+
+    assert texts(view, @listed_kinds) == ["DBConnection.ConnectionError"]
+    assert texts(view, @flagged_kinds) == []
+  end
+
+  defp record(overrides) do
+    occurrence =
+      Map.merge(
+        %{
+          kind: "RuntimeError",
+          message: "boom",
+          stacktrace: [frame("lib/imison/config.ex")],
+          context: %{},
+          occurred_at: minutes_ago(1)
+        },
+        Map.new(overrides)
+      )
+
+    {:ok, error} = Errors.record(Imison.config(Dashboard), occurrence)
+    error
+  end
+
+  defp frame(file), do: {Imison.Config, :new, 1, [file: String.to_charlist(file), line: 10]}
+
+  defp minutes_ago(minutes), do: DateTime.shift(DateTime.utc_now(), minute: -minutes)
+
+  defp set_status(%Error{id: error_id}, status) do
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.id == ^error_id)
+    |> Repo.update_all(set: [status: status])
+  end
+
+  defp texts(view, selector) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(selector)
+    |> Enum.map(&LazyHTML.text/1)
+  end
+
+  defp tab_counts(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(".tabs__item")
+    |> Map.new(fn tab ->
+      count = tab |> LazyHTML.query(".tabs__count") |> LazyHTML.text()
+      label = tab |> LazyHTML.text() |> String.replace_suffix(count, "") |> String.trim()
+      {label, count}
+    end)
   end
 end

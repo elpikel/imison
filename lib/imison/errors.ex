@@ -19,6 +19,35 @@ defmodule Imison.Errors do
           optional(:release) => String.t() | nil
         }
 
+  @listed_errors_limit 100
+
+  @spec list(Config.t(), status: atom(), search: String.t()) :: [Error.t()]
+  def list(%Config{repo: repo, prefix: prefix}, opts) do
+    status = Keyword.fetch!(opts, :status)
+
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.status == ^status)
+    |> matching(Keyword.get(opts, :search, ""))
+    |> order_by([error: error], desc: error.last_seen_at, desc: error.id)
+    |> limit(@listed_errors_limit)
+    |> repo.all(prefix: prefix)
+  end
+
+  @spec count_by_status(Config.t(), search: String.t()) :: %{atom() => non_neg_integer()}
+  def count_by_status(%Config{repo: repo, prefix: prefix}, opts) do
+    counts =
+      Error
+      |> from(as: :error)
+      |> matching(Keyword.get(opts, :search, ""))
+      |> group_by([error: error], error.status)
+      |> select([error: error], %{status: error.status, count: count(error.id)})
+      |> repo.all(prefix: prefix)
+      |> Map.new(&{&1.status, &1.count})
+
+    Map.new(Error.statuses(), &{&1, Map.get(counts, &1, 0)})
+  end
+
   @spec record(Config.t(), occurrence()) :: {:ok, Error.t()}
   def record(%Config{repo: repo} = conf, %{kind: kind, stacktrace: stacktrace} = occurrence) do
     frames = Frame.from_stacktrace(stacktrace)
@@ -31,6 +60,24 @@ defmodule Imison.Errors do
       {:ok, error}
     end)
   end
+
+  defp matching(query, search) do
+    case String.trim(search) do
+      "" -> query
+      text -> where(query, [error: error], ^containing(text))
+    end
+  end
+
+  defp containing(text) do
+    pattern = "%" <> escape_like_wildcards(text) <> "%"
+
+    dynamic(
+      [error: error],
+      ilike(error.kind, ^pattern) or ilike(error.message, ^pattern) or ilike(error.location, ^pattern)
+    )
+  end
+
+  defp escape_like_wildcards(text), do: String.replace(text, ~r/[\\%_]/, "\\\\\\0")
 
   defp upsert_error(%Config{repo: repo, prefix: prefix}, %{occurred_at: occurred_at} = occurrence) do
     now = DateTime.utc_now()

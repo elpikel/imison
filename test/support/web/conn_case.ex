@@ -3,11 +3,16 @@ defmodule Imison.ConnCase do
   Test case for requests to the dashboard through `Imison.Test.Endpoint`, with
   `Phoenix.ConnTest` and `Phoenix.LiveViewTest` imported, `browser_conn/0`,
   `next_browser_conn/1`, `login_form_token/1` and `sign_in/3`.
+
+  Each test checks out its own sandbox connection, shared with the processes
+  it starts (such as a LiveView) unless the test is `async: true`.
   """
 
   use ExUnit.CaseTemplate
 
   import Phoenix.ConnTest
+
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint Imison.Test.Endpoint
 
@@ -20,6 +25,12 @@ defmodule Imison.ConnCase do
 
       @endpoint Imison.Test.Endpoint
     end
+  end
+
+  setup tags do
+    owner = Sandbox.start_owner!(Imison.Test.Repo, shared: not tags[:async])
+    on_exit(fn -> Sandbox.stop_owner(owner) end)
+    :ok
   end
 
   @doc """
