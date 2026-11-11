@@ -2,8 +2,7 @@ defmodule Imison.Capture.Telemetry do
   @moduledoc false
 
   alias Imison.Capture
-
-  require Logger
+  alias Imison.Capture.FailureLog
 
   @phoenix_request_exception [:phoenix, :router_dispatch, :exception]
   @oban_job_exception [:oban, :job, :exception]
@@ -33,9 +32,11 @@ defmodule Imison.Capture.Telemetry do
     Capture.capture(name, event)
   catch
     kind, reason ->
-      Logger.error("Imison failed to capture a telemetry event: " <> Exception.format(kind, reason, __STACKTRACE__),
-        domain: [:imison]
-      )
+      FailureLog.error("Imison failed to capture a telemetry event", %{
+        kind: kind,
+        reason: reason,
+        stacktrace: __STACKTRACE__
+      })
   end
 
   defp handler_id(name), do: {__MODULE__, name}
@@ -51,7 +52,6 @@ defmodule Imison.Capture.Telemetry do
       request: %{
         method: conn.method,
         path: conn.request_path,
-        query_string: conn.query_string,
         params: conn.params,
         headers: Map.new(conn.req_headers)
       }

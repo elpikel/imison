@@ -27,7 +27,6 @@ defmodule Imison.Capture.TelemetryTest do
     assert [%{kind: "RuntimeError", context: %{"request" => request}}] = recorded(message)
     assert request["method"] == "POST"
     assert request["path"] == "/orders"
-    assert request["query_string"] == "page=2"
     assert request["params"] == %{"order" => %{"id" => "7"}, "page" => "2"}
     assert request["headers"]["user-agent"] == "curl/8.0"
   end
@@ -112,5 +111,24 @@ defmodule Imison.Capture.TelemetryTest do
     end)
 
     assert [%{occurrence_count: 1, context: %{"request" => %{"path" => "/orders"}}}] = recorded(message)
+  end
+
+  test "a Phoenix request event the handler can't read is logged without the request's values" do
+    start_imison()
+
+    conn =
+      :post
+      |> Plug.Test.conn("/login", %{"email" => "ann@example.test"})
+      |> Plug.Conn.put_req_header("cookie", "_session=xyz789")
+
+    log =
+      capture_log(fn ->
+        :telemetry.execute([:phoenix, :router_dispatch, :exception], %{duration: 1_000}, %{conn: conn})
+      end)
+
+    assert log =~ "Imison failed to capture a telemetry event"
+    assert log =~ "FunctionClauseError"
+    refute log =~ "xyz789"
+    refute log =~ "ann@example.test"
   end
 end

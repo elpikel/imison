@@ -4,8 +4,7 @@ defmodule Imison.Capture.LoggerHandler do
   @behaviour :logger_handler
 
   alias Imison.Capture
-
-  require Logger
+  alias Imison.Capture.FailureLog
 
   @skipped_domains [:imison, :cowboy, :bandit]
   @kept_metadata [:pid, :registered_name]
@@ -27,9 +26,7 @@ defmodule Imison.Capture.LoggerHandler do
     :ok
   catch
     kind, reason ->
-      Logger.error("Imison failed to capture a crash: " <> Exception.format(kind, reason, __STACKTRACE__),
-        domain: [:imison]
-      )
+      FailureLog.error("Imison failed to capture a crash", %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
   end
 
   def log(_event, _handler_config), do: :ok

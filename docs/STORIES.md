@@ -47,7 +47,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to report a rescued exception myself with `Imison.report/3`, so that handled errors are tracked too.
   Done when: `Imison.report(exception, stacktrace, metadata)` records an occurrence with that metadata in its context.
 
-- [ ] **CAP-03 Filter sensitive data** · needs: CAP-01
+- [x] **CAP-03 Filter sensitive data** · needs: CAP-01
   As a developer, I want sensitive params and headers filtered before storage, so that passwords and tokens never reach the database.
   Done when: keys from `filter` (default `password`, `token`, `secret`, `authorization`, `cookie`), at any depth in params, headers and metadata, are stored as `[FILTERED]`.
 
