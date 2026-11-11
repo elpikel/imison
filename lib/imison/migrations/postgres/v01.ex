@@ -20,6 +20,7 @@ defmodule Imison.Migrations.Postgres.V01 do
       add :first_seen_at, :utc_datetime_usec, null: false
       add :last_seen_at, :utc_datetime_usec, null: false
       add :occurrence_count, :bigint, null: false, default: 0
+      add :regressed_at, :utc_datetime_usec
 
       timestamps type: :utc_datetime_usec
     end

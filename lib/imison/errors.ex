@@ -35,26 +35,29 @@ defmodule Imison.Errors do
   defp upsert_error(%Config{repo: repo, prefix: prefix}, %{occurred_at: occurred_at} = occurrence) do
     now = DateTime.utc_now()
 
-    repo.insert!(
-      %Error{
-        fingerprint: occurrence.fingerprint,
-        kind: occurrence.kind,
-        message: occurrence.message,
-        location: occurrence.location,
-        first_seen_at: occurred_at,
-        last_seen_at: occurred_at,
-        occurrence_count: 1,
-        inserted_at: now,
-        updated_at: now
-      },
-      prefix: prefix,
-      on_conflict: newest_occurrence_wins(now),
-      conflict_target: :fingerprint,
-      returning: true
-    )
+    error =
+      repo.insert!(
+        %Error{
+          fingerprint: occurrence.fingerprint,
+          kind: occurrence.kind,
+          message: occurrence.message,
+          location: occurrence.location,
+          first_seen_at: occurred_at,
+          last_seen_at: occurred_at,
+          occurrence_count: 1,
+          inserted_at: now,
+          updated_at: now
+        },
+        prefix: prefix,
+        on_conflict: newest_occurrence_wins_and_resolved_regresses(now),
+        conflict_target: :fingerprint,
+        returning: true
+      )
+
+    %{error | reopened: reopened_by_this_call?(error)}
   end
 
-  defp newest_occurrence_wins(now) do
+  defp newest_occurrence_wins_and_resolved_regresses(now) do
     Error
     |> from(as: :error)
     |> update([error: error],
@@ -67,10 +70,37 @@ defmodule Imison.Errors do
             error.message
           ),
         last_seen_at: fragment("GREATEST(?, EXCLUDED.last_seen_at)", error.last_seen_at),
-        updated_at: ^now
+        status:
+          fragment(
+            "CASE WHEN ? = ? THEN ? ELSE ? END",
+            error.status,
+            type(^:resolved, error.status),
+            type(^:unresolved, error.status),
+            error.status
+          ),
+        regressed_at:
+          fragment(
+            "CASE WHEN ? = ? THEN GREATEST(?, ? + interval '1 microsecond') ELSE ? END",
+            error.status,
+            type(^:resolved, error.status),
+            type(^now, error.updated_at),
+            error.updated_at,
+            error.regressed_at
+          ),
+        updated_at:
+          fragment(
+            "GREATEST(?, ? + interval '1 microsecond')",
+            type(^now, error.updated_at),
+            error.updated_at
+          )
       ]
     )
   end
+
+  defp reopened_by_this_call?(%Error{regressed_at: nil}), do: false
+
+  defp reopened_by_this_call?(%Error{regressed_at: regressed_at, updated_at: updated_at}),
+    do: DateTime.compare(regressed_at, updated_at) == :eq
 
   defp insert_occurrence(%Config{repo: repo, prefix: prefix}, %Error{id: error_id}, occurrence) do
     repo.insert!(

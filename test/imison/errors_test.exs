@@ -247,6 +247,71 @@ defmodule Imison.ErrorsTest do
              end)
   end
 
+  test "a resolved error that happens again is unresolved and flagged as a regression with the time it came back" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    set_status(error, :resolved)
+
+    before_recording = DateTime.utc_now()
+    {:ok, recorded} = Errors.record(conf, occurrence([]))
+
+    assert recorded.reopened
+    assert %Error{status: :unresolved, regressed_at: %DateTime{} = regressed_at} = Repo.get!(Error, error.id)
+    assert DateTime.compare(regressed_at, before_recording) != :lt
+  end
+
+  test "an ignored error that happens again stays ignored, counts the occurrence and is not flagged" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    set_status(error, :ignored)
+
+    {:ok, recorded} = Errors.record(conf, occurrence([]))
+
+    refute recorded.reopened
+    assert %Error{status: :ignored, regressed_at: nil, occurrence_count: 2} = Repo.get!(Error, error.id)
+  end
+
+  test "an unresolved error that was never resolved is not flagged when it happens again" do
+    conf = config()
+    {:ok, first} = Errors.record(conf, occurrence([]))
+
+    {:ok, recorded} = Errors.record(conf, occurrence([]))
+
+    refute first.reopened
+    refute recorded.reopened
+    assert %Error{status: :unresolved, regressed_at: nil} = Repo.get!(Error, first.id)
+  end
+
+  test "processes on their own connections recording a resolved error at once tell exactly one of them it reopened the error" do
+    conf = config()
+    kind = "Imison.RegressionError#{System.unique_integer([:positive])}"
+    recorders = 20
+
+    on_exit(fn ->
+      Sandbox.unboxed_run(Repo, fn ->
+        Error |> from(as: :error) |> where([error: error], error.kind == ^kind) |> Repo.delete_all()
+      end)
+    end)
+
+    Sandbox.unboxed_run(Repo, fn ->
+      {:ok, error} = Errors.record(conf, occurrence(kind: kind))
+      set_status(error, :resolved)
+    end)
+
+    regressions =
+      1..recorders
+      |> Task.async_stream(
+        fn _recorder ->
+          {:ok, error} = Sandbox.unboxed_run(Repo, fn -> Errors.record(conf, occurrence(kind: kind)) end)
+          error.reopened
+        end,
+        max_concurrency: recorders
+      )
+      |> Enum.count(&(&1 == {:ok, true}))
+
+    assert regressions == 1
+  end
+
   test "with a configured prefix the error and occurrence are stored in that schema" do
     PrivatePrefix.migrate_up()
     conf = config(prefix: PrivatePrefix.name())
@@ -261,6 +326,13 @@ defmodule Imison.ErrorsTest do
 
   defp config(opts \\ []) do
     Config.new([repo: Repo, username: "admin", password: "secret"] ++ opts)
+  end
+
+  defp set_status(%Error{id: error_id}, status) do
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.id == ^error_id)
+    |> Repo.update_all(set: [status: status])
   end
 
   defp occurrence(overrides) do

@@ -55,7 +55,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want capture switched off in tests, so that expected failures do not fill the database.
   Done when: with `enabled: false`, no handlers are attached and `report/3` writes nothing.
 
-- [ ] **ERR-09 Reopen on regression** · needs: ERR-01
+- [x] **ERR-09 Reopen on regression** · needs: ERR-01
   As a developer, I want a resolved error to reopen when it happens again, so that regressions are not hidden.
   Done when: a new occurrence of a `resolved` error sets it to `unresolved` and flags it as a regression; `ignored` errors stay ignored.
 
@@ -114,7 +114,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
 
 - [ ] **MN-02 One notification per event across nodes** · needs: NOT-01, ERR-09
   As a developer, I want one notification per event even when several nodes catch the same error at the same moment, so that alerts are not duplicated.
-  Done when: only the process whose upsert inserted the error sends "new", and only the one whose `UPDATE ... WHERE status = 'resolved'` changed the row sends "regression", even under concurrent capture.
+  Done when: only the process whose upsert inserted the error sends "new", and only the one whose upsert flipped the error from `resolved` (`record/2` tells it so) sends "regression", even under concurrent capture.
 
 - [ ] **NOT-02 Email when a resolved error comes back** · needs: MN-02
   As a developer, I want an email when a resolved error comes back, so that I know a fix did not hold.
