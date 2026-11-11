@@ -5,19 +5,15 @@ defmodule Imison.Errors.Fingerprint do
 
   @type t :: %{fingerprint: String.t(), location: String.t() | nil}
 
-  @spec from_frames(String.t(), [Frame.t()], atom()) :: t()
-  def from_frames(kind, frames, otp_app) do
-    frame = grouping_frame(frames, otp_app)
+  @spec from_frames(String.t(), [Frame.t()]) :: t()
+  def from_frames(kind, frames) do
+    frame = grouping_frame(frames)
 
     %{fingerprint: hash(kind, frame), location: location(frame)}
   end
 
-  defp grouping_frame(frames, otp_app) do
-    Enum.find(frames, List.first(frames), &application_frame?(&1, otp_app))
-  end
-
-  defp application_frame?(%Frame{module: module}, otp_app) do
-    :application.get_application(module) == {:ok, otp_app}
+  defp grouping_frame(frames) do
+    Enum.find(frames, List.first(frames), & &1.application?)
   end
 
   defp hash(kind, frame) do

@@ -107,8 +107,8 @@ defmodule Imison.Errors do
 
   @spec record(Config.t(), occurrence()) :: {:ok, Error.t()}
   def record(%Config{repo: repo} = conf, %{kind: kind, stacktrace: stacktrace} = occurrence) do
-    frames = Frame.from_stacktrace(stacktrace)
-    grouping = Fingerprint.from_frames(kind, frames, repo.config()[:otp_app])
+    frames = Frame.from_stacktrace(stacktrace, repo.config()[:otp_app])
+    grouping = Fingerprint.from_frames(kind, frames)
 
     repo.transact(fn ->
       error = upsert_error(conf, Map.merge(occurrence, grouping))
@@ -239,7 +239,8 @@ defmodule Imison.Errors do
       function: Atom.to_string(frame.function),
       arity: frame.arity,
       file: frame.file,
-      line: frame.line
+      line: frame.line,
+      application: frame.application?
     }
   end
 

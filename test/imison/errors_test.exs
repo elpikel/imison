@@ -213,7 +213,14 @@ defmodule Imison.ErrorsTest do
              |> where([occurrence: occurrence], occurrence.error_id == ^first.id)
              |> Repo.all()
 
-    assert stored_builtin_frame == %{"module" => ":erlang", "function" => "+", "arity" => 2, "file" => nil, "line" => nil}
+    assert stored_builtin_frame == %{
+             "module" => ":erlang",
+             "function" => "+",
+             "arity" => 2,
+             "file" => nil,
+             "line" => nil,
+             "application" => false
+           }
   end
 
   test "an occurrence with an empty stack trace is grouped by its kind alone and has no location" do
@@ -242,7 +249,7 @@ defmodule Imison.ErrorsTest do
     assert error.location == "Imison.Config.new/1 (lib/imison/config.ex:42)"
   end
 
-  test "the stored stack trace keeps each frame's module, function, arity, file and line but not its arguments" do
+  test "the stored stack trace keeps each frame's module, function, arity, file, line and application marking but not its arguments" do
     conf = config()
     frame_with_arguments = {Config, :new, [[password: "secret"]], [file: ~c"lib/imison/config.ex", line: 42]}
 
@@ -260,8 +267,35 @@ defmodule Imison.ErrorsTest do
                "function" => "new",
                "arity" => 1,
                "file" => "lib/imison/config.ex",
-               "line" => 42
+               "line" => 42,
+               "application" => true
              }
+           ]
+  end
+
+  test "each stored frame is marked as an application frame when its module belongs to the repo's OTP app" do
+    conf = config()
+
+    stacktrace = [
+      dependency_frame(Ecto.Repo, :insert, 2),
+      application_frame(Config, :new, 1),
+      dependency_frame(Enum, :map, 2),
+      application_frame(Imison.Migration, :up, 1)
+    ]
+
+    {:ok, error} = Errors.record(conf, occurrence(stacktrace: stacktrace))
+
+    assert [%Occurrence{stacktrace: stored_frames}] =
+             Occurrence
+             |> from(as: :occurrence)
+             |> where([occurrence: occurrence], occurrence.error_id == ^error.id)
+             |> Repo.all()
+
+    assert Enum.map(stored_frames, &%{module: &1["module"], application: &1["application"]}) == [
+             %{module: "Ecto.Repo", application: false},
+             %{module: "Imison.Config", application: true},
+             %{module: "Enum", application: false},
+             %{module: "Imison.Migration", application: true}
            ]
   end
 

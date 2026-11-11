@@ -92,9 +92,16 @@ defmodule Imison.Web.ErrorLive do
     <section :if={@frames != []} class="panel">
       <div class="panel__head">
         <h2 class="section-title">Stack trace</h2>
+        <span :if={Enum.any?(@frames, &application_frame?/1)} class="muted" style="font-size:13px">
+          The teal edge marks frames in your code
+        </span>
       </div>
       <div>
-        <details :for={frame <- @frames} class="frame">
+        <details
+          :for={frame <- @frames}
+          class={["frame", frame_style(frame)]}
+          open={application_frame?(frame)}
+        >
           <summary>
             <span class="frame__fn">{frame_function(frame)}</span>
             <span :if={frame_location(frame)} class="frame__loc">{frame_location(frame)}</span>
@@ -164,6 +171,12 @@ defmodule Imison.Web.ErrorLive do
 
   defp frame_function(%{"module" => module, "function" => function, "arity" => arity}),
     do: "#{module}.#{function}/#{arity}"
+
+  defp frame_style(frame) do
+    if application_frame?(frame), do: "frame--app", else: "frame--dep"
+  end
+
+  defp application_frame?(frame), do: Map.get(frame, "application") == true
 
   defp frame_location(%{"file" => file, "line" => line}) when is_binary(file) and is_integer(line), do: "#{file}:#{line}"
   defp frame_location(%{"file" => file}) when is_binary(file), do: file
