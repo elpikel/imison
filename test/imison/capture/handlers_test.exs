@@ -1,6 +1,8 @@
 defmodule Imison.Capture.HandlersTest do
   use Imison.DataCase, async: false
 
+  import Imison.Test.CaptureHelpers, only: [attached_handlers: 1]
+
   alias Imison.Capture.LoggerHandler
   alias Imison.Capture.Telemetry
 
@@ -31,12 +33,5 @@ defmodule Imison.Capture.HandlersTest do
     start_supervised!({Imison, name: name, repo: Repo, username: "admin", password: "secret"})
 
     assert %{logger: [_handler]} = attached_handlers(name)
-  end
-
-  defp attached_handlers(name) do
-    %{
-      logger: for(%{id: id, config: %{name: ^name}} <- :logger.get_handler_config(), do: id),
-      telemetry: for(%{id: id, config: %{name: ^name}} <- :telemetry.list_handlers([]), do: id)
-    }
   end
 end

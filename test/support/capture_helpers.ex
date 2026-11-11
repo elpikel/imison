@@ -1,7 +1,8 @@
 defmodule Imison.Test.CaptureHelpers do
   @moduledoc """
   Builders for capture tests: start an instance, wait for its worker to
-  record what was cast to it, and read back what was recorded.
+  record what was cast to it or for a crashing process to exit, list the
+  handlers attached under an instance's name, and read back what was recorded.
   """
 
   import Ecto.Query
@@ -23,6 +24,23 @@ defmodule Imison.Test.CaptureHelpers do
     name
     |> Imison.Registry.via(Worker)
     |> :sys.get_state()
+  end
+
+  @spec wait_for_exit(pid()) :: :ok
+  def wait_for_exit(pid) do
+    ref = Process.monitor(pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    end
+  end
+
+  @spec attached_handlers(Imison.name()) :: %{logger: [term()], telemetry: [term()]}
+  def attached_handlers(name) do
+    %{
+      logger: for(%{id: id, config: %{name: ^name}} <- :logger.get_handler_config(), do: id),
+      telemetry: for(%{id: id, config: %{name: ^name}} <- :telemetry.list_handlers([]), do: id)
+    }
   end
 
   @spec raised(String.t()) :: {Exception.t(), Exception.stacktrace()}
