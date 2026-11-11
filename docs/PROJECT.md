@@ -63,7 +63,7 @@ lib/imison/notifications/        notifier, Channel behaviour, Email channel
 lib/imison/web/router.ex         imison_dashboard macro
 lib/imison/web/live/             error list, error detail, notifications, login
 lib/mix/tasks/imison.install.ex  Igniter installer
-priv/static/                      prebuilt app.css and app.js
+priv/static/                      app.css, fonts, imison.js (LiveSocket init)
 dev/                              small Phoenix host app for development, not published
 ```
 
@@ -76,7 +76,7 @@ dev/                              small Phoenix host app for development, not pu
 | `oban` | Optional | The job-failure hook attaches only when the host has it |
 | `igniter` | Optional | `mix imison.install`; without it the task prints the manual steps |
 
-The CSS and JS are built once and committed under `priv/static`, then served by Imison's own routes, so the host's asset pipeline is never involved.
+The CSS and fonts are committed under `priv/static`; the script is assembled at compile time from the `phoenix` and `phoenix_live_view` packages' own minified JavaScript plus `priv/static/imison.js`, which connects the LiveSocket. Imison's own routes serve all of them under the dashboard's path, so the host's asset pipeline is never involved and there is no JS build step.
 
 The stylesheet is [`priv/static/app.css`](../priv/static/app.css): plain CSS, no build step. Its fonts, Instrument Sans and JetBrains Mono, are bundled in `priv/static/fonts/` (WOFF2, latin and latin-ext) with their SIL OFL 1.1 licenses, so the dashboard makes no requests to a font CDN. The visual design is in [`docs/design/`](design/), as static mockups of each screen that link to that stylesheet: `login.html`, `errors.html`, `error-detail.html`, `notifications.html`, and `preview.html` with all screens in one page. The LiveViews reuse the mockups' markup and class names. During development the app under `dev/` starts an endpoint, a repo and Imison, and raises sample errors to fill the dashboard.
 
@@ -120,7 +120,7 @@ def up, do: Imison.Migration.up(version: 1)
 def down, do: Imison.Migration.down(version: 1)
 
 # 5. lib/my_app_web/router.ex
-import Imison.Router
+import Imison.Web.Router
 
 scope "/" do
   pipe_through :browser
@@ -219,6 +219,6 @@ The stories, with IDs, build order, dependencies and what "done" means for each,
 
 - [ ] Errors are stored in the app's own database, so a database outage cannot be recorded; it only reaches the log. Is that acceptable, or should Imison support a separate repo?
 - [ ] Built-in login only (assumed), or also an option to put the dashboard behind the host app's existing admin authentication? (ADR 0004, proposed)
-- [ ] Is requiring Phoenix LiveView in the host app acceptable? An app without it could still capture errors but would have no dashboard.
+- [x] Is requiring Phoenix LiveView in the host app acceptable? Settled in INS-03: `phoenix_live_view` (with `phoenix` and `phoenix_html`) is a required dependency, as with Oban Web (see `MEMORY.md`, 2026-11-11).
 - [ ] Deliver notifications with Imison's own `Task.Supervisor` (assumed), or through the host's Oban when it is present, for retries? (ADR 0005, proposed)
 - [ ] Is one login enough, or will a read-only second login be wanted soon?

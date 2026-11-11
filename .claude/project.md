@@ -49,9 +49,9 @@ Imison is a **library**, not a Phoenix app: it has no endpoint, router or repo o
 
 | Setting | Value |
 |---|---|
-| Endpoint test case | n/a (no controllers; LiveView tests go through a test endpoint, added with the first LiveView) |
+| Endpoint test case | `Imison.ConnCase` (`test/support/web/conn_case.ex`): requests through the test host `Imison.Test.Endpoint` and `Imison.Test.Router` (`test/support/web/`, dashboard mounted at `/errors` and `/admin/errors`, instance name `Imison.Test.Dashboard`); `Phoenix.ConnTest` and `Phoenix.LiveViewTest` imported; `browser_conn/0` keeps CSRF protection on. Tests that start the named instance are `async: false` |
 | Data test case | `Imison.DataCase` (`test/support/data_case.ex`): SQL sandbox, `async: true` ok |
-| Endpoint test file | n/a |
+| Endpoint test file | `test/imison/web/<module>_test.exs` (e.g. `assets_test.exs` for the asset routes) |
 | LiveView test file | `test/imison/web/live/<live_view>_test.exs` |
 | Module test file | `test/imison/…` mirroring `lib/imison/…` |
 | Test-data rules | none |

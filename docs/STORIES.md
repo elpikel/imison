@@ -70,7 +70,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
 
 ### Dashboard and auth
 
-- [ ] **INS-03 Mount the dashboard with one macro** · needs: DEV-02
+- [x] **INS-03 Mount the dashboard with one macro** · needs: DEV-02
   As a developer, I want the dashboard mounted with one router macro at a path I choose, so that it is part of my app and not another service.
   Done when: `imison_dashboard "/errors"` inside a `:browser` scope serves the dashboard and Imison's own `app.css` and fonts from `priv/static`, with no change to the host's asset pipeline.
 

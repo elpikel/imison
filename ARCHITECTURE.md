@@ -20,15 +20,17 @@ Reporting rescued exceptions. `Imison.report/3` (`lib/imison.ex`, public) is the
 
 Failure logs. `Imison.Capture.FailureLog.error/2` (`lib/imison/capture/failure_log.ex`, internal) logs a failure inside Imison (handlers and worker) with `Logger.error` under `domain: [:imison]`: the stack trace's argument lists are reduced to arities and a `FunctionClauseError` banner leaves out its arguments, so a failing handler never prints a conn, its cookies or an event into the host's logs.
 
-Imison's own tests run against Postgres. `test/support/` (compiled only in `:test`) holds `Imison.Test.Repo`, configured in `config/test.exs` with the SQL sandbox; `Imison.DataCase`, which checks out a sandbox connection per test; and a wrapper migration in `test/support/postgres/migrations/` that calls `Imison.Migration`, as a host app's migration does. `mix test` creates and migrates the `imison_test` database.
+Imison's own tests run against Postgres. `test/support/` (compiled only in `:test`) holds `Imison.Test.Repo`, configured in `config/test.exs` with the SQL sandbox; `Imison.DataCase`, which checks out a sandbox connection per test; and a wrapper migration in `test/support/postgres/migrations/` that calls `Imison.Migration`, as a host app's migration does. `mix test` creates and migrates the `imison_test` database. `test/support/web/` holds a test host: `Imison.Test.Endpoint` (cookie session, LiveView socket at `/live`), `Imison.Test.Router` (a `:browser` pipeline with `protect_from_forgery`, the dashboard mounted at `/errors` and `/admin/errors` for the instance `Imison.Test.Dashboard`), `Imison.Test.ErrorHTML` and `Imison.ConnCase`; `test_helper.exs` starts the endpoint and its PubSub, configured in `config/test.exs` (with `JSON` as Phoenix's JSON library).
 
-The dashboard stylesheet and its bundled fonts are in `priv/static/`, with mockups in `docs/design/`. Tooling is in place: Styler (`.formatter.exs`, which also imports the `ecto` and `ecto_sql` formatter config), Credo with ExSlop (`.credo.exs`).
+Dashboard mounting (INS-03), modelled on Oban Web. `Imison.Web.Router` (`lib/imison/web/router.ex`) defines the `imison_dashboard(path, opts)` macro, which a host calls inside a scope piped through its `:browser` pipeline. It expands to `scope path, alias: false, as: false` (so the host scope's alias doesn't prefix Imison's modules) holding `get "/assets/:digest/*asset"` to `Imison.Web.Assets` and a `live_session` named by `as` (default `:imison_dashboard`) with root layout `{Imison.Web.Layouts, :root}` and the session `%{"imison_name" => name, "dashboard_path" => full_path}` (`full_path` from `Phoenix.Router.scoped_path/2`, so outer scopes count), with `live "/", Imison.Web.ErrorsLive, :index`. Options are checked with `Keyword.validate!/2` (`imison_name`, default `Imison`; `as`); aliases in a literal option list are expanded in the caller. `Imison.Web.Assets` (`lib/imison/web/assets.ex`) is a plug that reads, at compile time, `priv/static/app.css`, the WOFF2 fonts in `priv/static/fonts/` and one script (`phoenix.min.js` and `phoenix_live_view.min.js` from those packages' `priv/static`, then `priv/static/imison.js`, which connects a `LiveView.LiveSocket` at `/live` with the page's CSRF token). URLs are `<dashboard path>/assets/<digest>/app.css`, `…/app.js` and `…/fonts/<file>`, the digest being an MD5 of every asset, so the stylesheet's relative `url("fonts/…")` resolves unchanged and every URL changes when any asset does; responses carry `cache-control: public, max-age=31536000, immutable`, an unknown digest or file is a 404, and the plug skips Plug's cross-origin JavaScript check (the script is public; Phoenix LiveDashboard does the same). `Assets.path/2` builds the stylesheet and script URLs. `Imison.Web.Layouts` (`lib/imison/web/layouts.ex`) has `root/1` (document head: CSRF meta tag, title, stylesheet, deferred script) and `app/1` (the `docs/design/` top bar with brand and nav, then `main.page`). `Imison.Web.ErrorsLive` (`lib/imison/web/live/errors_live.ex`) reads `Imison.config(imison_name)` in `mount` (raising when no instance runs under that name) and renders the `errors.html` shell with its empty state; ERR-02 fills the list. The host's endpoint supplies the LiveView socket at `/live`, the session and PubSub.
+
+The dashboard stylesheet and its bundled fonts are in `priv/static/`, with mockups in `docs/design/`. Tooling is in place: Styler (`.formatter.exs`, which also imports the `ecto`, `ecto_sql` and `phoenix` formatter config and exports `imison_dashboard` as a local without parentheses, so a host that imports Imison's formatter config writes `imison_dashboard "/errors"`), Credo with ExSlop (`.credo.exs`).
 
 `.gitignore` excludes `dev/`, where each maintainer keeps a local Phoenix host app for development; it is not in the repo (see the README).
 
 ## Stack
 
-Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`, `telemetry`. Test only: `plug` (tests emit the Phoenix event with a real `%Plug.Conn{}`). Planned: `phoenix_live_view`, `jason`; optional `swoosh`, `igniter`. Oban is never a dependency: its job-failure event is handled by telemetry alone. Imison has no endpoint, router or repo of its own; the host app supplies them.
+Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`, `telemetry`, `phoenix_live_view` (which brings `phoenix`, `phoenix_html` and `plug`). Test only: `lazy_html` (LiveView's test HTML parser). Planned: `jason`; optional `swoosh`, `igniter`. Oban is never a dependency: its job-failure event is handled by telemetry alone. Imison has no endpoint, router or repo of its own; the host app supplies them.
 
 ## Where new code goes
 
@@ -48,13 +50,16 @@ Elixir 1.20. Runtime dependencies: `ecto_sql`, `postgrex`, `telemetry`. Test onl
 | `lib/imison/errors/` | `Error`, `Occurrence` and `HourlyCount` schemas, `Frame`, `Fingerprint`; pruner later |
 | `lib/imison/notifications/` | Notifier, `Channel` behaviour, channels (Email first) |
 | `lib/imison/web/router.ex` | The `imison_dashboard` router macro |
-| `lib/imison/web/live/` | Error list, error detail, notifications, login LiveViews |
+| `lib/imison/web/assets.ex` | Plug serving the stylesheet, fonts and script under the dashboard path, with digested URLs |
+| `lib/imison/web/layouts.ex` | Root layout and the shared app shell (top bar, nav) |
+| `lib/imison/web/live/` | Error list (`errors_live.ex`), error detail, notifications, login LiveViews |
 | `lib/mix/tasks/imison.install.ex` | Igniter installer |
-| `priv/static/` | `app.css` (exists) and a prebuilt `app.js`, committed; `fonts/` holds the bundled WOFF2 files and their OFL licenses |
+| `priv/static/` | `app.css`, `imison.js` (LiveSocket init, appended to Phoenix's and LiveView's own JS at compile time); `fonts/` holds the bundled WOFF2 files and their OFL licenses |
 | `docs/design/` | Static HTML mockups of the dashboard screens, styled by `priv/static/app.css`: the reference for LiveView markup and class names |
 | `dev/` | Small Phoenix host app for development: local and gitignored, its own Mix project with a path dependency on Imison; not in the repo or the Hex package |
 | `test/imison/…` | Tests mirroring `lib/imison/…` |
 | `test/support/` | Test-only modules: `Imison.Test.Repo` (`repo.ex`), `Imison.DataCase` (`data_case.ex`), `Imison.Test.PrivatePrefix` (`private_prefix.ex`): Imison installed under a private `prefix` inside the test's sandbox |
+| `test/support/web/` | Test host for the dashboard: `Imison.Test.Endpoint`, `Imison.Test.Router`, `Imison.Test.ErrorHTML`, `Imison.ConnCase` |
 | `test/support/postgres/migrations/` | Wrapper migrations for the test repo that call `Imison.Migration`, as a host app does; each released version gets its own |
 
 ## Data
