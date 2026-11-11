@@ -6,6 +6,7 @@ defmodule Imison.Web.ErrorsLiveTest do
 
   alias Imison.Errors
   alias Imison.Errors.Error
+  alias Imison.Errors.HourlyCount
   alias Imison.Test.Dashboard
   alias Imison.Test.Repo
 
@@ -394,6 +395,93 @@ defmodule Imison.Web.ErrorsLiveTest do
     assert texts(view, @flagged_kinds) == []
   end
 
+  test "each row shows 24 hourly cells, oldest first, ending with the current hour" do
+    start_imison(name: Dashboard, enabled: false)
+    hour = current_hour()
+    error = record(kind: "KeyError", occurred_at: start_of(hour))
+    record(kind: "KeyError", occurred_at: start_of(DateTime.shift(hour, hour: -23)))
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert heat_levels(view, error) == [
+             "4",
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             "4"
+           ]
+  end
+
+  test "empty hours have no level and busier hours get higher levels of the heat scale" do
+    start_imison(name: Dashboard, enabled: false)
+    hour = current_hour()
+    error = record(kind: "KeyError", occurred_at: start_of(DateTime.shift(hour, day: -3)))
+    count_in_hour(error, DateTime.shift(hour, hour: -6), 1)
+    count_in_hour(error, DateTime.shift(hour, hour: -4), 4)
+    count_in_hour(error, DateTime.shift(hour, hour: -2), 6)
+    count_in_hour(error, hour, 8)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert heat_levels(view, error) ==
+             List.duplicate(nil, 17) ++ ["1", nil, "2", nil, "3", nil, "4"]
+  end
+
+  test "the heat strip reads as the number of events in the last 24 hours" do
+    start_imison(name: Dashboard, enabled: false)
+    hour = current_hour()
+    error = record(kind: "KeyError", occurred_at: start_of(DateTime.shift(hour, day: -3)))
+    count_in_hour(error, DateTime.shift(hour, hour: -12), 1_200)
+    count_in_hour(error, hour, 34)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(
+             view,
+             "#error-#{error.id} .heat.error-row__heat[role=img][aria-label='1,234 events in the last 24 hours']"
+           )
+  end
+
+  test "a heat strip with one event reads it in the singular" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError", occurred_at: start_of(current_hour()))
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, "#error-#{error.id} .heat[aria-label='1 event in the last 24 hours']")
+  end
+
+  test "counts older than 24 hours are not in the heat strip" do
+    start_imison(name: Dashboard, enabled: false)
+    hour = current_hour()
+    error = record(kind: "KeyError", occurred_at: start_of(DateTime.shift(hour, day: -1)))
+    count_in_hour(error, DateTime.shift(hour, hour: -30), 5)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert heat_levels(view, error) == List.duplicate(nil, 24)
+    assert has_element?(view, "#error-#{error.id} .heat[aria-label='0 events in the last 24 hours']")
+  end
+
   defp record(overrides) do
     occurrence =
       Map.merge(
@@ -414,6 +502,34 @@ defmodule Imison.Web.ErrorsLiveTest do
   defp frame(file), do: {Imison.Config, :new, 1, [file: String.to_charlist(file), line: 10]}
 
   defp minutes_ago(minutes), do: DateTime.shift(DateTime.utc_now(), minute: -minutes)
+
+  defp current_hour do
+    now = DateTime.utc_now()
+    hour = %{now | minute: 0, second: 0, microsecond: {0, 0}}
+    next_hour = DateTime.shift(hour, hour: 1)
+    milliseconds_left_in_hour = DateTime.diff(next_hour, now, :millisecond)
+
+    if milliseconds_left_in_hour < 10_000 do
+      Process.sleep(milliseconds_left_in_hour)
+      current_hour()
+    else
+      hour
+    end
+  end
+
+  defp start_of(hour), do: %{hour | microsecond: {0, 6}}
+
+  defp count_in_hour(%Error{id: error_id}, hour, count) do
+    Repo.insert!(%HourlyCount{error_id: error_id, hour: hour, count: count})
+  end
+
+  defp heat_levels(view, %Error{id: error_id}) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#error-#{error_id} .heat i")
+    |> Enum.map(&(&1 |> LazyHTML.attribute("data-l") |> List.first()))
+  end
 
   defp set_status(%Error{id: error_id}, status) do
     Error

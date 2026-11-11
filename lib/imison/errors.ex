@@ -20,6 +20,7 @@ defmodule Imison.Errors do
         }
 
   @listed_errors_limit 100
+  @heat_strip_hours 24
 
   @spec list(Config.t(), status: atom(), search: String.t()) :: [Error.t()]
   def list(%Config{repo: repo, prefix: prefix}, opts) do
@@ -48,6 +49,34 @@ defmodule Imison.Errors do
     Map.new(Error.statuses(), &{&1, Map.get(counts, &1, 0)})
   end
 
+  @spec hourly_counts(Config.t(), [integer()], DateTime.t()) :: %{integer() => [non_neg_integer()]}
+  def hourly_counts(%Config{repo: repo, prefix: prefix}, error_ids, now) do
+    current_hour = start_of_hour(now)
+    first_hour = DateTime.shift(current_hour, hour: 1 - @heat_strip_hours)
+
+    counts_by_error =
+      HourlyCount
+      |> from(as: :hourly_count)
+      |> where([hourly_count: hourly_count], hourly_count.error_id in ^error_ids)
+      |> where([hourly_count: hourly_count], hourly_count.hour >= ^first_hour and hourly_count.hour <= ^current_hour)
+      |> select([hourly_count: hourly_count], %{
+        error_id: hourly_count.error_id,
+        hour: hourly_count.hour,
+        count: hourly_count.count
+      })
+      |> repo.all(prefix: prefix)
+      |> Enum.group_by(& &1.error_id)
+
+    Map.new(error_ids, fn error_id ->
+      counts =
+        counts_by_error
+        |> Map.get(error_id, [])
+        |> counts_oldest_first(first_hour)
+
+      {error_id, counts}
+    end)
+  end
+
   @spec record(Config.t(), occurrence()) :: {:ok, Error.t()}
   def record(%Config{repo: repo} = conf, %{kind: kind, stacktrace: stacktrace} = occurrence) do
     frames = Frame.from_stacktrace(stacktrace)
@@ -59,6 +88,11 @@ defmodule Imison.Errors do
       count_in_hour(conf, error, occurrence)
       {:ok, error}
     end)
+  end
+
+  defp counts_oldest_first(hourly_counts, first_hour) do
+    counts_by_hours_since_first = Map.new(hourly_counts, &{DateTime.diff(&1.hour, first_hour, :hour), &1.count})
+    Enum.map(0..(@heat_strip_hours - 1), &Map.get(counts_by_hours_since_first, &1, 0))
   end
 
   defp matching(query, search) do

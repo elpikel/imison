@@ -86,7 +86,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to filter the list by status and to search by text, so that I can find what matters.
   Done when: tabs for unresolved, resolved and ignored show their counts, and search matches kind, message and location. Screen: `docs/design/errors.html`.
 
-- [ ] **ERR-03 24-hour heat strip** · needs: ERR-02
+- [x] **ERR-03 24-hour heat strip** · needs: ERR-02
   As a developer, I want to see how often each error happened over the last 24 hours, so that I can tell a spike from background noise.
   Done when: each row shows 24 hourly cells from `imison_hourly_counts`, coloured on the heat scale.
 
