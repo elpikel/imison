@@ -97,6 +97,24 @@ defmodule Imison.CaptureTest do
     assert [%{occurrence_count: 1}] = recorded(kind)
   end
 
+  test "a broadcast that fails is logged and the event is still recorded" do
+    name = make_ref()
+    kind = unique_kind()
+
+    start_supervised!(
+      {Imison, name: name, repo: Repo, username: "admin", password: "secret", pubsub: Imison.Test.MissingPubSub}
+    )
+
+    log =
+      capture_log([metadata: [:domain]], fn ->
+        Capture.capture(name, event(kind: kind))
+        wait_for_worker(name)
+      end)
+
+    assert log =~ ~r/domain=elixir\.imison \[error\] Imison failed to broadcast a recorded error/
+    assert [%{occurrence_count: 1}] = recorded(kind)
+  end
+
   test "the dropped count is zero when no instance runs under the name" do
     assert Capture.dropped(make_ref()) == 0
   end

@@ -90,7 +90,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to see how often each error happened over the last 24 hours, so that I can tell a spike from background noise.
   Done when: each row shows 24 hourly cells from `imison_hourly_counts`, coloured on the heat scale.
 
-- [ ] **ERR-04 Live list** · needs: ERR-02
+- [x] **ERR-04 Live list** · needs: ERR-02
   As a developer, I want the list to update live as errors happen, so that I can watch a deploy.
   Done when: a new or repeated occurrence broadcast on the host PubSub updates rows, counts and heat strips in an open list without a reload.
 

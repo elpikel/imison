@@ -2,12 +2,15 @@ defmodule Imison.Web.ErrorsLiveTest do
   use Imison.ConnCase, async: false
 
   import Ecto.Query
+  import ExUnit.CaptureLog
   import Imison.Test.CaptureHelpers
 
+  alias Imison.Capture
   alias Imison.Errors
   alias Imison.Errors.Error
   alias Imison.Errors.HourlyCount
   alias Imison.Test.Dashboard
+  alias Imison.Test.PubSub
   alias Imison.Test.Repo
 
   @listed_kinds ".error-row .error-row__kind"
@@ -482,21 +485,136 @@ defmodule Imison.Web.ErrorsLiveTest do
     assert has_element?(view, "#error-#{error.id} .heat[aria-label='0 events in the last 24 hours']")
   end
 
-  defp record(overrides) do
-    occurrence =
-      Map.merge(
-        %{
-          kind: "RuntimeError",
-          message: "boom",
-          stacktrace: [frame("lib/imison/config.ex")],
-          context: %{},
-          occurred_at: minutes_ago(1)
-        },
-        Map.new(overrides)
-      )
+  test "a newly recorded error appears in the open list without a reload" do
+    start_imison(name: Dashboard, pubsub: PubSub)
+    record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
 
-    {:ok, error} = Errors.record(Imison.config(Dashboard), occurrence)
+    capture_and_wait(kind: "ArgumentError", occurred_at: DateTime.utc_now())
+
+    assert texts(view, @listed_kinds) == ["ArgumentError", "KeyError"]
+    assert has_element?(view, ".errors__foot", "2 errors")
+  end
+
+  test "another occurrence of a listed error updates its count, last seen and heat strip without a reload" do
+    start_imison(name: Dashboard, pubsub: PubSub)
+    current_hour()
+    error = record(kind: "KeyError", occurred_at: minutes_ago(3 * 60))
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    assert List.last(heat_levels(view, error)) == nil
+
+    capture_and_wait(kind: "KeyError", occurred_at: DateTime.utc_now())
+
+    assert has_element?(view, "#error-#{error.id} .error-row__events", "2")
+    assert has_element?(view, "#error-#{error.id} .error-row__seen", "just now")
+    assert List.last(heat_levels(view, error)) == "4"
+    assert has_element?(view, "#error-#{error.id} .heat[aria-label='2 events in the last 24 hours']")
+  end
+
+  test "the tab counts update as errors are recorded" do
+    start_imison(name: Dashboard, pubsub: PubSub)
+    [kind: "MatchError"] |> record() |> set_status(:resolved)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    assert tab_counts(view) == %{"Unresolved" => "0", "Resolved" => "1", "Ignored" => "0"}
+
+    capture_and_wait(kind: "MatchError", occurred_at: DateTime.utc_now())
+
+    assert tab_counts(view) == %{"Unresolved" => "1", "Resolved" => "0", "Ignored" => "0"}
+  end
+
+  test "an error recorded right after a live update still appears, within a second" do
+    start_imison(name: Dashboard, pubsub: PubSub)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    capture_and_wait(kind: "KeyError", occurred_at: DateTime.utc_now())
+    assert texts(view, @listed_kinds) == ["KeyError"]
+
+    capture_and_wait(kind: "ArgumentError", occurred_at: DateTime.utc_now())
+
+    assert listed_within?(view, "ArgumentError", 2_000)
+  end
+
+  test "with pubsub configured, the connected list shows the live indicator in the top bar" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".topbar .topbar__end .live .live__dot")
+    assert has_element?(view, ".topbar .topbar__end .live", "Live")
+  end
+
+  test "the page as first served, before it connects, shows no live indicator" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+
+    document = "/errors" |> sign_in("admin", "secret") |> get("/errors") |> html_response(200) |> LazyHTML.from_document()
+
+    assert document |> LazyHTML.query(".topbar") |> Enum.count() == 1
+    assert document |> LazyHTML.query(".live") |> Enum.empty?()
+  end
+
+  test "without pubsub the list shows no live indicator and lists recorded errors on reload" do
+    start_imison(name: Dashboard)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    capture_and_wait(kind: "KeyError", occurred_at: DateTime.utc_now())
+
+    refute has_element?(view, ".live")
+    {:ok, reloaded_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    assert texts(reloaded_view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "with no PubSub running under the configured name, the connected list still serves errors, without the live indicator, and logs the failure" do
+    start_imison(name: Dashboard, pubsub: Imison.Test.MissingPubSub, enabled: false)
+    record(kind: "KeyError")
+
+    {result, log} =
+      with_log([metadata: [:domain]], fn -> live(sign_in("/errors", "admin", "secret"), "/errors") end)
+
+    assert {:ok, view, _html} = result
+    assert texts(view, @listed_kinds) == ["KeyError"]
+    refute has_element?(view, ".live")
+    assert log =~ ~r/domain=elixir\.imison \[error\] Imison failed to subscribe to recorded errors/
+  end
+
+  defp record(overrides) do
+    {:ok, error} = Errors.record(Imison.config(Dashboard), occurrence(overrides))
     error
+  end
+
+  defp capture_and_wait(overrides) do
+    Capture.capture(Dashboard, occurrence(overrides))
+    wait_for_worker(Dashboard)
+  end
+
+  defp occurrence(overrides) do
+    Map.merge(
+      %{
+        kind: "RuntimeError",
+        message: "boom",
+        stacktrace: [frame("lib/imison/config.ex")],
+        context: %{},
+        occurred_at: minutes_ago(1)
+      },
+      Map.new(overrides)
+    )
+  end
+
+  defp listed_within?(view, kind, milliseconds) do
+    deadline = System.monotonic_time(:millisecond) + milliseconds
+    listed_before?(view, kind, deadline)
+  end
+
+  defp listed_before?(view, kind, deadline) do
+    cond do
+      kind in texts(view, @listed_kinds) ->
+        true
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        false
+
+      true ->
+        Process.sleep(50)
+        listed_before?(view, kind, deadline)
+    end
   end
 
   defp frame(file), do: {Imison.Config, :new, 1, [file: String.to_charlist(file), line: 10]}

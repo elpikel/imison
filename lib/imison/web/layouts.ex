@@ -35,9 +35,11 @@ defmodule Imison.Web.Layouts do
   end
 
   @doc """
-  The top bar with the main navigation and the Sign out button, and the page below it.
+  The top bar with the main navigation, the Live indicator when `live` is
+  true, and the Sign out button, and the page below it.
   """
   attr(:dashboard_path, :string, required: true)
+  attr(:live, :boolean, default: false)
   slot(:inner_block, required: true)
 
   @spec app(map()) :: Rendered.t()
@@ -61,6 +63,9 @@ defmodule Imison.Web.Layouts do
         <.link class="nav__link" navigate={@dashboard_path} aria-current="page">Errors</.link>
       </nav>
       <div class="topbar__end">
+        <span :if={@live} class="live" title="Connected. New events appear without reloading.">
+          <span class="live__dot"></span><span>Live</span>
+        </span>
         <.form for={%{}} action={Paths.logout(@dashboard_path)} method="post">
           <button class="btn btn--quiet btn--sm" type="submit">Sign out</button>
         </.form>
