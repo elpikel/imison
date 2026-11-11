@@ -43,7 +43,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   Done when: a crashed process, a raising Phoenix request and a failing Oban job each produce an occurrence; the Oban hook attaches only when Oban is loaded; modules in `ignore` are never recorded.
   Note: the Oban handler attaches unconditionally, not only when Oban is loaded: a telemetry handler for an event nobody emits never fires, so it is harmless when Oban is absent and no code references Oban.
 
-- [ ] **CAP-02 Report rescued exceptions** · needs: CAP-04
+- [x] **CAP-02 Report rescued exceptions** · needs: CAP-04
   As a developer, I want to report a rescued exception myself with `Imison.report/3`, so that handled errors are tracked too.
   Done when: `Imison.report(exception, stacktrace, metadata)` records an occurrence with that metadata in its context.
 
