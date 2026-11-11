@@ -29,7 +29,7 @@ One captured event belonging to an error, with its stack trace, context, release
 _Avoid_: event, instance, hit
 
 **Fingerprint**:
-The hash that decides which error an occurrence belongs to: the exception module plus the first application frame, never the message.
+The hash that decides which error an occurrence belongs to: the exception module plus the first application frame (or the first frame when there is none), never the message.
 _Avoid_: group key, signature
 
 **Kind**:
@@ -37,8 +37,12 @@ The exception module (or `exit`/`throw`) of an error.
 _Avoid_: type, class
 
 **Application frame**:
-A stack frame from the host app's own code, as opposed to a dependency frame.
+A stack frame from the host app's own code, as opposed to a dependency frame: its module belongs to the OTP app of the host repo Imison is configured with.
 _Avoid_: in-app frame, user frame
+
+**Location**:
+Where an error happened: the first application frame as `Module.function/arity (file:line)`, or the first frame when no frame is an application frame; none when the stack trace is empty.
+_Avoid_: origin, source
 
 **Status**:
 Where an error stands: `unresolved`, `resolved` or `ignored`.
