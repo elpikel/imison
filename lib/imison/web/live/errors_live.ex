@@ -15,7 +15,9 @@ defmodule Imison.Web.ErrorsLive do
   alias Imison.Errors
   alias Imison.Errors.Broadcast
   alias Imison.Errors.Error
+  alias Imison.Web.Format
   alias Imison.Web.Layouts
+  alias Imison.Web.Paths
 
   @live_reload_interval_ms 1_000
 
@@ -61,7 +63,7 @@ defmodule Imison.Web.ErrorsLive do
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
-    <Layouts.app dashboard_path={@dashboard_path} live={@live}>
+    <Layouts.app dashboard_path={@dashboard_path} flash={@flash} live={@live}>
       <div class="page__head">
         <div>
           <h1 class="page__title">Errors</h1>
@@ -74,7 +76,7 @@ defmodule Imison.Web.ErrorsLive do
           patch={list_path(@dashboard_path, status, @search)}
           aria-current={to_string(status == @status)}
         >
-          {status_label(status)} <span class="tabs__count">{@counts[status]}</span>
+          {Format.status_label(status)} <span class="tabs__count">{@counts[status]}</span>
         </.link>
       </nav>
       <section class="panel">
@@ -97,6 +99,7 @@ defmodule Imison.Web.ErrorsLive do
           errors={@errors}
           hourly_counts={@hourly_counts}
           total={@counts[@status]}
+          dashboard_path={@dashboard_path}
           now={@now}
         />
         <.empty_state
@@ -114,6 +117,7 @@ defmodule Imison.Web.ErrorsLive do
   attr :hourly_counts, :map, required: true
   attr :total, :integer, required: true
   attr :now, DateTime, required: true
+  attr :dashboard_path, :string, required: true
 
   defp error_list(assigns) do
     ~H"""
@@ -124,7 +128,7 @@ defmodule Imison.Web.ErrorsLive do
       <li :for={error <- @errors} id={"error-#{error.id}"} class="error-row">
         <div class="error-row__main">
           <div class="error-row__title">
-            <span class="error-row__kind truncate">{error.kind}</span>
+            <.link class="error-row__kind truncate" navigate={Paths.error(@dashboard_path, error.id)}>{error.kind}</.link>
             <span :if={back_again?(error)} class="flag flag--regressed">Back again</span>
           </div>
           <p class="error-row__message truncate">{error.message}</p>
@@ -133,7 +137,7 @@ defmodule Imison.Web.ErrorsLive do
           </div>
         </div>
         <.heat_strip counts={Map.fetch!(@hourly_counts, error.id)} />
-        <span class="error-row__events">{with_thousands_separators(error.occurrence_count)}</span>
+        <span class="error-row__events">{Format.with_thousands_separators(error.occurrence_count)}</span>
         <span class="error-row__seen">{time_ago(DateTime.diff(@now, error.last_seen_at))}</span>
       </li>
     </ul>
@@ -161,7 +165,7 @@ defmodule Imison.Web.ErrorsLive do
     ~H"""
     <div class="empty">
       <h2 class="empty__title">No matching errors</h2>
-      <p class="empty__text">No {String.downcase(status_label(@status))} error matches “{@search}”.</p>
+      <p class="empty__text">No {String.downcase(Format.status_label(@status))} error matches “{@search}”.</p>
       <.link class="btn" patch={list_path(@dashboard_path, @status, "")}>Clear search</.link>
     </div>
     """
@@ -182,8 +186,8 @@ defmodule Imison.Web.ErrorsLive do
   defp empty_state(assigns) do
     ~H"""
     <div class="empty">
-      <h2 class="empty__title">No {String.downcase(status_label(@status))} errors</h2>
-      <p class="empty__text">Errors you mark as {String.downcase(status_label(@status))} appear here.</p>
+      <h2 class="empty__title">No {String.downcase(Format.status_label(@status))} errors</h2>
+      <p class="empty__text">Errors you mark as {String.downcase(Format.status_label(@status))} appear here.</p>
     </div>
     """
   end
@@ -215,8 +219,6 @@ defmodule Imison.Web.ErrorsLive do
   defp search_from_param(param) when is_binary(param), do: param
   defp search_from_param(_param), do: ""
 
-  defp status_label(status), do: status |> Atom.to_string() |> String.capitalize()
-
   defp list_path(dashboard_path, status, search) do
     query =
       []
@@ -245,17 +247,7 @@ defmodule Imison.Web.ErrorsLive do
   defp heat_level(count, busiest), do: div(count * 4 + busiest - 1, busiest)
 
   defp events_in_last_24_hours(1), do: "1 event in the last 24 hours"
-  defp events_in_last_24_hours(total), do: "#{with_thousands_separators(total)} events in the last 24 hours"
-
-  defp with_thousands_separators(number) do
-    number
-    |> Integer.to_string()
-    |> String.reverse()
-    |> String.graphemes()
-    |> Enum.chunk_every(3)
-    |> Enum.map_join(",", &Enum.join/1)
-    |> String.reverse()
-  end
+  defp events_in_last_24_hours(total), do: "#{Format.with_thousands_separators(total)} events in the last 24 hours"
 
   defp time_ago(seconds) when seconds < 60, do: "just now"
   defp time_ago(seconds) when seconds < 3600, do: "#{div(seconds, 60)} min ago"

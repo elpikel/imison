@@ -21,6 +21,7 @@ defmodule Imison.Errors do
 
   @listed_errors_limit 100
   @heat_strip_hours 24
+  @largest_id 9_223_372_036_854_775_807
 
   @spec list(Config.t(), status: atom(), search: String.t()) :: [Error.t()]
   def list(%Config{repo: repo, prefix: prefix}, opts) do
@@ -33,6 +34,33 @@ defmodule Imison.Errors do
     |> order_by([error: error], desc: error.last_seen_at, desc: error.id)
     |> limit(@listed_errors_limit)
     |> repo.all(prefix: prefix)
+  end
+
+  @spec get(Config.t(), integer() | String.t()) :: Error.t() | nil
+  def get(%Config{repo: repo, prefix: prefix}, id) when is_integer(id) and id in 1..@largest_id//1 do
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.id == ^id)
+    |> repo.one(prefix: prefix)
+  end
+
+  def get(%Config{} = conf, id) when is_binary(id) do
+    case Integer.parse(id) do
+      {integer_id, ""} -> get(conf, integer_id)
+      _not_an_id -> nil
+    end
+  end
+
+  def get(%Config{}, _id), do: nil
+
+  @spec latest_occurrence(Config.t(), integer()) :: Occurrence.t() | nil
+  def latest_occurrence(%Config{repo: repo, prefix: prefix}, error_id) do
+    Occurrence
+    |> from(as: :occurrence)
+    |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
+    |> order_by([occurrence: occurrence], desc: occurrence.occurred_at, desc: occurrence.id)
+    |> limit(1)
+    |> repo.one(prefix: prefix)
   end
 
   @spec count_by_status(Config.t(), search: String.t()) :: %{atom() => non_neg_integer()}

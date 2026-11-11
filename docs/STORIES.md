@@ -94,7 +94,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want the list to update live as errors happen, so that I can watch a deploy.
   Done when: a new or repeated occurrence broadcast on the host PubSub updates rows, counts and heat strips in an open list without a reload.
 
-- [ ] **ERR-05 Error detail** · needs: ERR-02
+- [x] **ERR-05 Error detail** · needs: ERR-02
   As a developer, I want to open an error and see the message, stack trace, request, metadata and runtime, so that I can reproduce it.
   Done when: the detail page shows the latest occurrence's stack trace and its request, metadata and runtime context (incl. node and release). Screen: `docs/design/error-detail.html`.
 
