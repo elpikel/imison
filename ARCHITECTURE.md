@@ -1,0 +1,40 @@
+# Architecture
+
+Imision is a plain Mix library (OTP app `:imision`) that runs inside a host Phoenix app. This doc describes what is built; the full design, stories and open decisions are in [`docs/PROJECT.md`](docs/PROJECT.md).
+
+## What exists
+
+Nothing beyond the `mix new` skeleton: `lib/imision.ex` and its test. The dashboard stylesheet and its bundled fonts are in `priv/static/`, with mockups in `docs/design/`. Tooling is in place: Styler (`.formatter.exs`), Credo with ExSlop (`.credo.exs`).
+
+## Stack
+
+Elixir 1.20. Planned runtime dependencies: `phoenix_live_view`, `ecto_sql`, `postgrex`, `jason`, `telemetry`; optional `swoosh`, `oban`, `igniter`. Imision has no endpoint, router or repo of its own; the host app supplies them.
+
+## Where new code goes
+
+| Path | Holds |
+|---|---|
+| `lib/imision.ex` | The `Imision` supervisor, config validation, `report/3` |
+| `lib/imision/migration.ex` | Versioned `up/down` for the `imision_` tables |
+| `lib/imision/capture/` | `:logger` handler, Phoenix and Oban telemetry handlers, capture worker |
+| `lib/imision/errors/` | Schemas, fingerprint, upsert, pruner |
+| `lib/imision/notifications/` | Notifier, `Channel` behaviour, channels (Email first) |
+| `lib/imision/web/router.ex` | The `imision_dashboard` router macro |
+| `lib/imision/web/live/` | Error list, error detail, notifications, login LiveViews |
+| `lib/mix/tasks/imision.install.ex` | Igniter installer |
+| `priv/static/` | `app.css` (exists) and a prebuilt `app.js`, committed; `fonts/` holds the bundled WOFF2 files and their OFL licenses |
+| `docs/design/` | Static HTML mockups of the dashboard screens, styled by `priv/static/app.css`: the reference for LiveView markup and class names |
+| `dev/` | Small Phoenix host app for development; not published |
+| `test/imision/…` | Tests mirroring `lib/imision/…` |
+
+## Data
+
+All tables are owned by Imision, live in the host's database and are prefixed `imision_`: `errors`, `occurrences`, `hourly_counts`, `channels`, `rules`, `deliveries`. None exist yet.
+
+## Decisions
+
+- [0001](docs/adr/0001-embedded-library-in-host-app.md): embedded library using the host's repo, not a separate service
+- [0002](docs/adr/0002-database-coordinates-nodes.md): the database, not the cluster, coordinates nodes
+- [0003](docs/adr/0003-fingerprint-ignores-message.md): fingerprint ignores the message
+- [0004](docs/adr/0004-built-in-dashboard-login.md): built-in dashboard login (proposed)
+- [0005](docs/adr/0005-no-hard-oban-dependency.md): no hard Oban dependency (proposed)

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Errors – Imision</title>
+<link rel="stylesheet" href="../../priv/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="errors.html"><svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" style="fill:var(--mark)"/><path d="M5 14h4l2-6 3 9 2-5h3" fill="none" style="stroke:var(--spark)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Imision</a>
+  <nav class="nav" aria-label="Main">
+    <a class="nav__link" href="errors.html" aria-current="page">Errors<span class="nav__count">8</span></a>
+    <a class="nav__link" href="notifications.html">Notifications</a>
+  </nav>
+  <div class="topbar__end">
+    <span class="live" title="Connected. New events appear without reloading."><span class="live__dot"></span><span>Live</span></span>
+    <a class="btn btn--quiet btn--sm" href="login.html">Sign out</a>
+  </div>
+</header>
+<main class="page">
+  <div class="page__head">
+    <div>
+      <h1 class="page__title">Errors</h1>
+      <p class="page__lede">8 unresolved. 2 appeared in the last 24 hours.</p>
+    </div>
+  </div>
+
+  <nav class="tabs" aria-label="Status">
+    <a class="tabs__item" href="errors.html" aria-current="true">Unresolved <span class="tabs__count">8</span></a>
+    <a class="tabs__item" href="errors.html">Resolved <span class="tabs__count">41</span></a>
+    <a class="tabs__item" href="errors.html">Ignored <span class="tabs__count">5</span></a>
+  </nav>
+
+  <section class="panel">
+    <div class="toolbar">
+      <label class="toolbar__grow"><span class="visually-hidden">Search errors</span>
+        <input class="input" type="search" placeholder="Search by error, message or file">
+      </label>
+    </div>
+
+    <!-- Shown while one or more rows are selected -->
+    <div class="bulkbar" hidden>
+      <span>2 selected</span>
+      <button class="btn btn--sm" type="button">Resolve</button>
+      <button class="btn btn--sm" type="button">Ignore</button>
+    </div>
+
+    <div class="errors__head">
+      <input class="checkbox" type="checkbox" aria-label="Select all">
+      <span>Error</span><span>Last 24 hours</span><span style="text-align:right">Events</span><span style="text-align:right">Last seen</span>
+    </div>
+    <ul class="errors">
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select FunctionClauseError">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">FunctionClauseError</a><span class="flag flag--new">New</span></div>
+          <p class="error-row__message truncate">no function clause matching in Checkout.Payments.normalize_currency/1</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/payments.ex:140</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="212 events in the last 24 hours"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i data-l="3"></i><i data-l="2"></i><i data-l="4"></i><i data-l="4"></i><i data-l="3"></i><i data-l="2"></i></div>
+        <span class="error-row__events">212</span>
+        <span class="error-row__seen">2 min ago</span>
+      </li>
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select DBConnection.ConnectionError">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">DBConnection.ConnectionError</a><span class="flag flag--regressed">Back again</span></div>
+          <p class="error-row__message truncate">connection not available and request was dropped from queue after 2000ms</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/orders.ex:54</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="1,804 events in the last 24 hours"><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i data-l="2"></i><i data-l="3"></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i data-l="4"></i><i data-l="3"></i><i data-l="1"></i><i></i></div>
+        <span class="error-row__events">1,804</span>
+        <span class="error-row__seen">6 min ago</span>
+      </li>
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select Ecto.NoResultsError">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">Ecto.NoResultsError</a></div>
+          <p class="error-row__message truncate">expected at least one result but got none in query</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout_web/controllers/order_controller.ex:41</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="3,127 events in the last 24 hours"><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i></div>
+        <span class="error-row__events">3,127</span>
+        <span class="error-row__seen">11 min ago</span>
+      </li>
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select KeyError">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">KeyError</a></div>
+          <p class="error-row__message truncate">key :customer_id not found in: %{&quot;invoice_id&quot; =&gt; 88214}</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/workers/invoice_mailer.ex:27</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="38 events in the last 24 hours"><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i data-l="1"></i><i></i></div>
+        <span class="error-row__events">38</span>
+        <span class="error-row__seen">40 min ago</span>
+      </li>
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select Jason.DecodeError">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">Jason.DecodeError</a><span class="flag flag--new">New</span></div>
+          <p class="error-row__message truncate">unexpected byte at position 0: 0x3C (&quot;&lt;&quot;)</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/stripe/webhook.ex:63</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="7 events in the last 24 hours"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="2"></i><i data-l="1"></i><i></i><i></i></div>
+        <span class="error-row__events">7</span>
+        <span class="error-row__seen">3 h ago</span>
+      </li>
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select Postgrex.Error">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">Postgrex.Error</a></div>
+          <p class="error-row__message truncate">ERROR 23505 (unique_violation) duplicate key value violates unique constraint &quot;orders_reference_index&quot;</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/orders.ex:118</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="54 events in the last 24 hours"><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="error-row__events">54</span>
+        <span class="error-row__seen">9 h ago</span>
+      </li>
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select ArgumentError">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">ArgumentError</a></div>
+          <p class="error-row__message truncate">errors were found at the given arguments: 1st argument: not a textual representation of an integer</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout_web/live/cart_live.ex:203</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="3 events in the last 24 hours"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="error-row__events">3</span>
+        <span class="error-row__seen">11 h ago</span>
+      </li>
+      <li class="error-row">
+        <input class="checkbox error-row__check" type="checkbox" aria-label="Select MatchError">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">MatchError</a></div>
+          <p class="error-row__message truncate">no match of right hand side value: {:error, :timeout}</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/shipping/rates.ex:77</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="12 events in the last 24 hours"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="error-row__events">12</span>
+        <span class="error-row__seen">12 h ago</span>
+      </li>
+    </ul>
+    <p class="errors__foot">8 errors</p>
+
+    <!-- Empty state, shown instead of the list:
+    <div class="empty">
+      <h2 class="empty__title">No unresolved errors</h2>
+      <p class="empty__text">Nothing has failed since you last resolved everything. New errors appear here as they happen.</p>
+      <a class="btn" href="errors.html">Show resolved errors</a>
+    </div> -->
+  </section>
+</main>
+</body>
+</html>

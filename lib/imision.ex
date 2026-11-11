@@ -1,6 +1,6 @@
-defmodule Imison do
+defmodule Imision do
   @moduledoc """
-  Documentation for `Imison`.
+  Documentation for `Imision`.
   """
 
   @doc """
@@ -8,7 +8,7 @@ defmodule Imison do
 
   ## Examples
 
-      iex> Imison.hello()
+      iex> Imision.hello()
       :world
 
   """

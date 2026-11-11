@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FunctionClauseError – Imision</title>
+<link rel="stylesheet" href="../../priv/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="errors.html"><svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" style="fill:var(--mark)"/><path d="M5 14h4l2-6 3 9 2-5h3" fill="none" style="stroke:var(--spark)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Imision</a>
+  <nav class="nav" aria-label="Main">
+    <a class="nav__link" href="errors.html" aria-current="page">Errors<span class="nav__count">8</span></a>
+    <a class="nav__link" href="notifications.html">Notifications</a>
+  </nav>
+  <div class="topbar__end">
+    <span class="live" title="Connected. New events appear without reloading."><span class="live__dot"></span><span>Live</span></span>
+    <a class="btn btn--quiet btn--sm" href="login.html">Sign out</a>
+  </div>
+</header>
+<main class="page">
+  <a class="back" href="errors.html">Back to errors</a>
+
+  <div class="detail">
+    <div>
+      <header class="error-head">
+        <h1 class="error-head__kind">FunctionClauseError</h1>
+        <p class="error-head__message">no function clause matching in Checkout.Payments.normalize_currency/1</p>
+        <div class="error-head__meta">
+          <span class="flag flag--unresolved">Unresolved</span>
+          <span class="flag flag--new">New</span>
+          <span>Release 2.14.3</span>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="panel__head occurrence-nav">
+          <p class="occurrence-nav__when"><strong>Occurrence 212 of 212</strong> <span class="muted">11 Nov 2026, 14:32:07 UTC</span></p>
+          <div class="btn-row">
+            <button class="btn btn--sm" type="button">Older</button>
+            <button class="btn btn--sm" type="button" disabled>Newer</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <h2 class="section-title">Stack trace</h2>
+          <span class="muted" style="font-size:13px">The blue edge marks frames in your code</span>
+        </div>
+        <div>
+          <details class="frame frame--app" open>
+            <summary><span class="frame__fn">Checkout.Payments.normalize_currency/1</span><span class="frame__loc">lib/checkout/payments.ex:140</span></summary>
+            <div class="frame__body">
+<pre class="codeblock"><span class="c"># Called with 1 argument</span>
+  1. nil
+
+<span class="c"># Clauses tried</span>
+  <span class="k">def</span> normalize_currency(code) <span class="k">when</span> is_binary(code)</pre>
+            </div>
+          </details>
+          <details class="frame frame--app">
+            <summary><span class="frame__fn">Checkout.Payments.build_charge/2</span><span class="frame__loc">lib/checkout/payments.ex:88</span></summary>
+          </details>
+          <details class="frame frame--app">
+            <summary><span class="frame__fn">Checkout.Orders.place/2</span><span class="frame__loc">lib/checkout/orders.ex:54</span></summary>
+          </details>
+          <details class="frame frame--app">
+            <summary><span class="frame__fn">CheckoutWeb.OrderController.create/2</span><span class="frame__loc">lib/checkout_web/controllers/order_controller.ex:23</span></summary>
+          </details>
+          <details class="frame frame--group">
+            <summary>3 more frames from phoenix, plug and bandit</summary>
+            <details class="frame frame--dep"><summary><span class="frame__fn">Phoenix.Router.__call__/5</span><span class="frame__loc">(phoenix 1.8.1) lib/phoenix/router.ex:416</span></summary></details>
+            <details class="frame frame--dep"><summary><span class="frame__fn">Plug.Telemetry.call/2</span><span class="frame__loc">(plug 1.18.1) lib/plug/telemetry.ex:76</span></summary></details>
+            <details class="frame frame--dep"><summary><span class="frame__fn">Bandit.Pipeline.call_plug!/2</span><span class="frame__loc">(bandit 1.8.0) lib/bandit/pipeline.ex:131</span></summary></details>
+          </details>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2 class="section-title">Request</h2></div>
+        <div class="panel__body">
+          <dl class="kv">
+            <dt>Method and path</dt><dd><code>POST /api/orders</code></dd>
+            <dt>Params</dt><dd><code>%{&quot;cart_id&quot; =&gt; &quot;c_81f3&quot;, &quot;currency&quot; =&gt; nil, &quot;card&quot; =&gt; &quot;[FILTERED]&quot;}</code></dd>
+            <dt>Remote IP</dt><dd><code>203.0.113.42</code></dd>
+            <dt>User agent</dt><dd>CheckoutApp/5.2 (iOS 19.1)</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2 class="section-title">Logger metadata</h2></div>
+        <div class="panel__body">
+          <dl class="kv">
+            <dt>request_id</dt><dd><code>GHk3x0Zq1mE7tQwAAB2C</code></dd>
+            <dt>user_id</dt><dd><code>48213</code></dd>
+            <dt>cart_id</dt><dd><code>c_81f3</code></dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2 class="section-title">Runtime</h2></div>
+        <div class="panel__body">
+          <dl class="kv">
+            <dt>Elixir and OTP</dt><dd>Elixir 1.19.2, OTP 28</dd>
+            <dt>Node</dt><dd><code>checkout@10.0.3.17</code></dd>
+            <dt>Host</dt><dd><code>checkout-web-2</code></dd>
+            <dt>Process</dt><dd><code>#PID&lt;0.4127.0&gt;</code></dd>
+          </dl>
+        </div>
+      </section>
+    </div>
+
+    <aside class="panel rail" aria-label="Error summary">
+      <div class="rail__block">
+        <div class="btn-row">
+          <button class="btn btn--primary" type="button">Resolve</button>
+          <button class="btn" type="button">Ignore</button>
+        </div>
+      </div>
+      <div class="rail__block">
+        <p class="rail__label">Last 24 hours</p>
+        <div class="heat heat--tall" role="img" aria-label="212 events in the last 24 hours"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i data-l="3"></i><i data-l="2"></i><i data-l="4"></i><i data-l="4"></i><i data-l="3"></i><i data-l="2"></i></div>
+        <div class="heat-scale"><span>24 h ago</span><span>now</span></div>
+      </div>
+      <div class="rail__block">
+        <p class="rail__label">Last 14 days</p>
+        <div class="heat heat--tall" role="img" aria-label="212 events in the last 14 days"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="4"></i></div>
+        <div class="heat-scale"><span>29 Oct</span><span>today</span></div>
+      </div>
+      <div class="rail__block rail__stats">
+        <div><p class="rail__label">Events</p><p class="rail__value">212</p></div>
+        <div><p class="rail__label">In the last hour</p><p class="rail__value">31</p></div>
+      </div>
+      <div class="rail__block">
+        <p class="rail__label">First seen</p>
+        <p class="rail__value">Today, 13:05 UTC</p>
+        <p class="rail__sub">In release 2.14.3</p>
+      </div>
+      <div class="rail__block">
+        <p class="rail__label">Last seen</p>
+        <p class="rail__value">2 minutes ago</p>
+      </div>
+      <div class="rail__block">
+        <p class="rail__label">Notifications</p>
+        <p class="rail__sub" style="margin-bottom:10px">Emailed ops@example.com at 13:05 UTC.</p>
+        <button class="btn btn--sm" type="button">Mute this error</button>
+      </div>
+      <div class="rail__block">
+        <p class="rail__label">Fingerprint</p>
+        <code>a41f9c2e</code>
+      </div>
+    </aside>
+  </div>
+</main>
+</body>
+</html>
