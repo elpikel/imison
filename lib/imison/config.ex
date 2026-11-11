@@ -28,6 +28,7 @@ defmodule Imison.Config do
 
   @required_options [:repo, :username, :password]
 
+  @derive {Inspect, except: [:password]}
   @enforce_keys @required_options
   defstruct name: Imison,
             repo: nil,

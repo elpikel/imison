@@ -153,4 +153,14 @@ defmodule Imison.ConfigTest do
       Config.new(repo: Repo, username: "admin", password: "secret", prefix: :private)
     end
   end
+
+  test "inspecting the config hides the password but shows the other options" do
+    config = Config.new(repo: Repo, username: "admin", password: "correct-horse-battery")
+
+    inspected = inspect(config)
+
+    refute inspected =~ "correct-horse-battery"
+    assert inspected =~ ~s(username: "admin")
+    assert inspected =~ "Imison.Test.Repo"
+  end
 end

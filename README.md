@@ -42,7 +42,7 @@ config :my_app, Imison,
   password: System.fetch_env!("IMISON_PASSWORD")
 ```
 
-`repo`, `username` and `password` are required; every other option has a default (`Imison.Config`). Imison never reads environment variables itself: with `IMISON_USER` or `IMISON_PASSWORD` unset, the host's `System.fetch_env!` raises while loading `config/runtime.exs`. A missing, unknown, duplicate or wrongly typed option raises an `ArgumentError` from Imison. Either way the host fails to boot.
+`repo`, `username` and `password` are required; every other option has a default (`Imison.Config`). `username` and `password` are the dashboard login: they live only in config, are never stored in the database, and a sign-in is checked against both with `Plug.Crypto.secure_compare/2` (the login form arrives with AUTH-02). Imison never reads environment variables itself: with `IMISON_USER` or `IMISON_PASSWORD` unset, the host's `System.fetch_env!` raises while loading `config/runtime.exs`. A missing, unknown, duplicate or wrongly typed option raises an `ArgumentError` from Imison. Either way the host fails to boot.
 
 ### Migration
 
