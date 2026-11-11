@@ -1,0 +1,23 @@
+defmodule Imison.Errors.Error do
+  @moduledoc false
+
+  use Ecto.Schema
+
+  @type t :: %__MODULE__{}
+
+  @timestamps_opts [type: :utc_datetime_usec]
+
+  schema "imison_errors" do
+    field :fingerprint, :string
+    field :kind, :string
+    field :message, :string
+    field :location, :string
+    field :status, Ecto.Enum, values: [:unresolved, :resolved, :ignored], default: :unresolved
+    field :muted, :boolean, default: false
+    field :first_seen_at, :utc_datetime_usec
+    field :last_seen_at, :utc_datetime_usec
+    field :occurrence_count, :integer, default: 0
+
+    timestamps()
+  end
+end

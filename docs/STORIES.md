@@ -30,7 +30,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want the tables created by a normal Ecto migration in my repo, so that they deploy and roll back with the rest of my schema.
   Done when: `Imison.Migration.up(version: 1)` creates the six `imison_` tables with the unique index on `fingerprint`, and `down(version: 1)` removes them.
 
-- [ ] **ERR-01 Group identical errors** · needs: INS-02
+- [x] **ERR-01 Group identical errors** · needs: INS-02
   As a developer, I want identical errors grouped into one row with a count, so that one bug does not flood the list.
   Done when: two occurrences with the same exception module and first application frame but different messages produce one error with `occurrence_count` 2 and two occurrences, written in one transaction that also increments the hourly count.
 
@@ -58,9 +58,10 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want a resolved error to reopen when it happens again, so that regressions are not hidden.
   Done when: a new occurrence of a `resolved` error sets it to `unresolved` and flags it as a regression; `ignored` errors stay ignored.
 
-- [ ] **MN-01 One error list for all nodes** · needs: ERR-01
+- [x] **MN-01 One error list for all nodes** · needs: ERR-01
   As a developer running several nodes, I want every node to feed one error list, so that I do not check each node separately.
   Done when: concurrent upserts of the same fingerprint from separate processes produce one error with the summed count and no lost increments.
+  Delivered with ERR-01: errors are upserted with SQL-side increments.
 
 - [ ] **MN-03 Node of each occurrence** · needs: ERR-01
   As a developer, I want to see which node each occurrence came from, so that I can spot a single bad instance.

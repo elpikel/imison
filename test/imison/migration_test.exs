@@ -1,26 +1,19 @@
 defmodule Imison.MigrationTest do
   use Imison.DataCase, async: false
 
-  @private_prefix "imison_test_private"
+  alias Imison.Test.PrivatePrefix
+
+  @private_prefix PrivatePrefix.name()
 
   @tables ~w(imison_channels imison_deliveries imison_errors imison_hourly_counts imison_occurrences imison_rules)
-
-  defmodule PrivatePrefixMigration do
-    @moduledoc false
-    use Ecto.Migration
-
-    def up, do: Imison.Migration.up(prefix: "imison_test_private")
-
-    def down, do: Imison.Migration.down(prefix: "imison_test_private")
-  end
 
   defmodule VersionOneMigration do
     @moduledoc false
     use Ecto.Migration
 
-    def up, do: Imison.Migration.up(version: 1, prefix: "imison_test_private")
+    def up, do: Imison.Migration.up(version: 1, prefix: PrivatePrefix.name())
 
-    def down, do: Imison.Migration.down(version: 1, prefix: "imison_test_private")
+    def down, do: Imison.Migration.down(version: 1, prefix: PrivatePrefix.name())
   end
 
   test "the host's migration creates the six Imison tables in the public schema" do
@@ -41,10 +34,10 @@ defmodule Imison.MigrationTest do
   end
 
   test "running up to version 1 again keeps the tables, their rows and the version" do
-    migrate_up(VersionOneMigration)
+    PrivatePrefix.migrate_up(VersionOneMigration)
     fingerprint = insert_error(@private_prefix, "fingerprint-kept")
 
-    migrate_up(VersionOneMigration)
+    PrivatePrefix.migrate_up(VersionOneMigration)
 
     assert tables_in(@private_prefix) == @tables
     assert migrated_version(@private_prefix) == 1
@@ -52,7 +45,7 @@ defmodule Imison.MigrationTest do
   end
 
   test "rolling back version 1 drops the six tables and leaves version 0" do
-    version = migrate_up(VersionOneMigration)
+    version = PrivatePrefix.migrate_up(VersionOneMigration)
 
     :ok = Ecto.Migrator.down(Repo, version, VersionOneMigration, log: false, migration_lock: false)
 
@@ -61,7 +54,7 @@ defmodule Imison.MigrationTest do
   end
 
   test "up with a prefix creates that schema holding the six tables" do
-    migrate_up(PrivatePrefixMigration)
+    PrivatePrefix.migrate_up()
 
     assert %{rows: [[@private_prefix]]} =
              Repo.query!("SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1", [
@@ -70,12 +63,6 @@ defmodule Imison.MigrationTest do
 
     assert tables_in(@private_prefix) == @tables
     assert migrated_version(@private_prefix) == 1
-  end
-
-  defp migrate_up(migration) do
-    version = 99_990_000_000_000 + System.unique_integer([:positive, :monotonic])
-    :ok = Ecto.Migrator.up(Repo, version, migration, log: false, migration_lock: false)
-    version
   end
 
   defp migrated_version(prefix), do: Imison.Migration.migrated_version(repo: Repo, prefix: prefix)
