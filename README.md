@@ -2,11 +2,11 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. There is no dashboard yet; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard` and serves its own assets, but shows only an empty error list so far; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo) and `telemetry` (Phoenix and Oban capture). Planned: Phoenix LiveView for the dashboard; optional Swoosh (email) and Igniter (installer). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Planned: optional Swoosh (email) and Igniter (installer). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
 
 ## Installation (planned)
 
@@ -75,6 +75,29 @@ end
 
 The metadata (a map or a keyword list, optional) is stored under `metadata` in the occurrence's context, filtered like every other context. `report/3` records in the background and always returns `:ok`: it never raises or blocks, and does nothing when no Imison instance runs. It reports to the default instance, named `Imison`; instances started with a custom `name` aren't reachable from `report/3` yet.
 
+### Mounting the dashboard
+
+Built today: import `Imison.Web.Router` in the host's router and call `imison_dashboard` inside a scope that pipes through the `:browser` pipeline (session and CSRF protection), at any path:
+
+```elixir
+# lib/my_app_web/router.ex
+import Imison.Web.Router
+
+scope "/" do
+  pipe_through :browser
+
+  imison_dashboard "/errors"
+end
+```
+
+The host's endpoint needs the LiveView socket at `/live` with the session in its `connect_info`, as a Phoenix app generated with LiveView already has:
+
+```elixir
+socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
+```
+
+The dashboard serves its own stylesheet, fonts and script under its path (`/errors/assets/…`, with digested URLs cached for a year), so the host's asset pipeline is unchanged and the page makes no third-party requests. Options: `imison_name:` names the Imison instance the dashboard reads (default `Imison`, for an instance started with a custom `name`), and `as:` names the route and its `live_session` (default `:imison_dashboard`; give each a different one to mount the dashboard twice in one router). The page raises when no instance runs under that name. There is no login yet (AUTH-02): until then, mount it only where the host already restricts access. Add `:imison` to `import_deps` in the host's `.formatter.exs` to format the macro without parentheses.
+
 ### Capture off in tests
 
 Built today: set `enabled: false` in the host's test config, so tests that crash on purpose don't fill the database.
@@ -105,7 +128,7 @@ To see Imison in a host app, keep a small Phoenix app in `dev/`: its own Mix pro
 cd dev && mix deps.get && mix dev
 ```
 
-`mix dev` creates and migrates the `imison_dev` database and serves http://localhost:4000, which links to routes that raise sample errors.
+`mix dev` creates and migrates the `imison_dev` database and serves http://localhost:4000, which links to routes that raise sample errors and to the dashboard. To mount the dashboard there, `dev/` needs what any host needs: a `Phoenix.PubSub` and `{Imison, ...}` in its supervision tree, `pubsub_server` and `live_view: [signing_salt: ...]` in its endpoint config, `Plug.Session` and the `/live` socket in its endpoint, and a `:browser` pipeline with `imison_dashboard "/errors"` in its router.
 
 ## Docs
 

@@ -47,7 +47,8 @@ defmodule Imison.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ecto_sql, "~> 3.14"},
       {:ex_slop, "~> 0.4.5", only: [:dev, :test], runtime: false},
-      {:plug, "~> 1.16", only: :test},
+      {:lazy_html, ">= 0.1.0", only: :test},
+      {:phoenix_live_view, "~> 1.1"},
       {:postgrex, "~> 0.22"},
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
       {:telemetry, "~> 1.3"}
