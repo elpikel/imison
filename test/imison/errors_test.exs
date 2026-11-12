@@ -669,6 +669,120 @@ defmodule Imison.ErrorsTest do
     assert %Error{muted: true} = Repo.get!(Error, error.id, prefix: PrivatePrefix.name())
   end
 
+  test "the daily summary lists the errors first seen during the day, oldest first, with their counts for that day" do
+    conf = config()
+    {:ok, later} = Errors.record(conf, occurrence(kind: "LaterError", occurred_at: ~U[2026-11-11 18:00:00.000000Z]))
+    {:ok, _later} = Errors.record(conf, occurrence(kind: "LaterError", occurred_at: ~U[2026-11-11 19:00:00.000000Z]))
+    {:ok, earlier} = Errors.record(conf, occurrence(kind: "EarlierError", occurred_at: ~U[2026-11-11 00:00:00.000000Z]))
+
+    assert %{date: ~D[2026-11-11], new: new} = Errors.daily_summary(conf, ~D[2026-11-11])
+
+    assert new == %{
+             lines: [
+               %{error_id: earlier.id, kind: "EarlierError", message: "boom", location: earlier.location, count: 1},
+               %{error_id: later.id, kind: "LaterError", message: "boom", location: later.location, count: 2}
+             ],
+             total: 2
+           }
+  end
+
+  test "the daily summary lists the first 20 new errors of the day and counts them all" do
+    conf = config()
+
+    errors =
+      for minute <- 0..20 do
+        occurred_at = DateTime.new!(~D[2026-11-11], Time.new!(10, minute, 0, {0, 6}), "Etc/UTC")
+        {:ok, error} = Errors.record(conf, occurrence(kind: "ManyError#{minute}", occurred_at: occurred_at))
+        error
+      end
+
+    %{new: %{lines: lines, total: total}} = Errors.daily_summary(conf, ~D[2026-11-11])
+
+    assert Enum.map(lines, & &1.error_id) == errors |> Enum.take(20) |> Enum.map(& &1.id)
+    assert total == 21
+  end
+
+  test "the daily summary lists the errors that came back during the day with their counts for that day" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence(kind: "CameBackError", occurred_at: ~U[2026-11-01 10:00:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(kind: "CameBackError", occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    set_regressed_at(error, ~U[2026-11-11 10:00:01.000000Z])
+    {:ok, other} = Errors.record(conf, occurrence(kind: "OtherError", occurred_at: ~U[2026-11-01 10:00:00.000000Z]))
+    set_regressed_at(other, ~U[2026-11-10 10:00:00.000000Z])
+
+    assert %{new: %{lines: [], total: 0}, came_back: came_back} = Errors.daily_summary(conf, ~D[2026-11-11])
+
+    assert came_back == %{
+             lines: [%{error_id: error.id, kind: "CameBackError", message: "boom", location: error.location, count: 1}],
+             total: 1
+           }
+  end
+
+  test "the daily summary's most frequent errors are the five with the most occurrences that day, most first" do
+    conf = config()
+
+    errors =
+      for occurrences <- 1..6 do
+        kind = "FrequentError#{occurrences}"
+        {:ok, error} = Errors.record(conf, occurrence(kind: kind, occurred_at: ~U[2026-11-01 10:00:00.000000Z]))
+
+        for hour <- 1..occurrences do
+          {:ok, _error} = Errors.record(conf, occurrence(kind: kind, occurred_at: hour_of_day(~D[2026-11-11], hour)))
+        end
+
+        error
+      end
+
+    %{most_frequent: most_frequent} = Errors.daily_summary(conf, ~D[2026-11-11])
+
+    assert most_frequent.total == 6
+
+    assert Enum.map(most_frequent.lines, &{&1.error_id, &1.count}) ==
+             errors
+             |> Enum.with_index(1)
+             |> Enum.reverse()
+             |> Enum.take(5)
+             |> Enum.map(fn {error, count} -> {error.id, count} end)
+  end
+
+  test "the daily summary leaves out errors first seen, come back or occurring only on other days" do
+    conf = config()
+    {:ok, before} = Errors.record(conf, occurrence(kind: "BeforeError", occurred_at: ~U[2026-11-10 23:59:59.999999Z]))
+    set_regressed_at(before, ~U[2026-11-10 23:59:59.999999Z])
+    {:ok, next} = Errors.record(conf, occurrence(kind: "NextDayError", occurred_at: ~U[2026-11-12 00:00:00.000000Z]))
+    set_regressed_at(next, ~U[2026-11-12 00:00:00.000000Z])
+
+    assert Errors.daily_summary(conf, ~D[2026-11-11]) == %{
+             date: ~D[2026-11-11],
+             new: %{lines: [], total: 0},
+             came_back: %{lines: [], total: 0},
+             most_frequent: %{lines: [], total: 0}
+           }
+  end
+
+  test "the daily summary lists muted errors like any other" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence(kind: "MutedError", occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    {:ok, 1} = Errors.set_muted(conf, [error.id], true)
+
+    assert %{new: %{lines: [%{error_id: error_id}]}, most_frequent: %{lines: [%{error_id: error_id}]}} =
+             Errors.daily_summary(conf, ~D[2026-11-11])
+
+    assert error_id == error.id
+  end
+
+  test "with a configured prefix the daily summary is read from that schema" do
+    PrivatePrefix.migrate_up()
+    conf = config(prefix: PrivatePrefix.name())
+    kind = "Imison.PrefixError#{System.unique_integer([:positive])}"
+    {:ok, error} = Errors.record(conf, occurrence(kind: kind, occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+
+    assert %{new: %{lines: [%{error_id: error_id}]}, most_frequent: %{lines: [%{count: 1}]}} =
+             Errors.daily_summary(conf, ~D[2026-11-11])
+
+    assert error_id == error.id
+  end
+
   test "pruning deletes occurrences older than the retention days, keeps the newer ones and returns how many rows went" do
     conf = config(retention_days: 7)
     now = ~U[2026-11-12 12:00:00.000000Z]
@@ -804,6 +918,15 @@ defmodule Imison.ErrorsTest do
     |> where([error: error], error.id == ^error_id)
     |> Repo.update_all(set: [updated_at: updated_at])
   end
+
+  defp set_regressed_at(%Error{id: error_id}, regressed_at) do
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.id == ^error_id)
+    |> Repo.update_all(set: [regressed_at: regressed_at])
+  end
+
+  defp hour_of_day(date, hour), do: DateTime.new!(date, Time.new!(hour, 30, 0, {0, 6}), "Etc/UTC")
 
   defp config(opts \\ []) do
     Config.new([repo: Repo, username: "admin", password: "secret"] ++ opts)

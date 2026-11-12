@@ -11,8 +11,13 @@ if Code.ensure_loaded?(Swoosh.Email) do
     it was last seen) for the hourly reminder about an unresolved error that
     keeps happening, then the error's kind, message, location, occurrence
     count, when it was first seen and, with the `dashboard_url` option, a link
-    to its detail page. The test message sent from the notifications screen is
-    "[Imison] Test email", saying that delivery works.
+    to its detail page. The daily digest is "[Imison] Daily summary for <date>"
+    with three sections, "New errors", "Came back" and "Most frequent", each
+    line giving an error's kind, message, that day's occurrence count,
+    location and, with `dashboard_url`, its link; a section with more errors
+    than it lists ends with "and N more" and the dashboard's link. The test message sent from
+    the notifications screen is "[Imison] Test email", saying that delivery
+    works.
 
     Each recipient must look like an email address (`local@domain`); the
     domain isn't looked up.
@@ -61,6 +66,7 @@ if Code.ensure_loaded?(Swoosh.Email) do
     defp not_an_address(recipient), do: "#{inspect(recipient)} is not an email address"
 
     defp subject(%Message{trigger: :test}), do: "[Imison] Test email"
+    defp subject(%Message{trigger: :digest, summary: %{date: date}}), do: "[Imison] Daily summary for #{day(date)}"
     defp subject(%Message{location: nil} = message), do: "[Imison] #{headline(message)}: #{message.kind}"
     defp subject(%Message{} = message), do: "[Imison] #{headline(message)}: #{message.kind} in #{message.location}"
 
@@ -74,6 +80,18 @@ if Code.ensure_loaded?(Swoosh.Email) do
 
       This is a test email sent from the notifications screen. Imison emails these recipients when an error matches one of the rules switched on there.
       """
+    end
+
+    defp text_body(%Message{trigger: :digest, summary: summary}) do
+      Enum.join(
+        [
+          "Daily summary for #{day(summary.date)} (UTC)",
+          digest_section("New errors", summary.new, summary.url),
+          digest_section("Came back", summary.came_back, summary.url),
+          digest_section("Most frequent", summary.most_frequent, summary.url)
+        ],
+        "\n\n"
+      )
     end
 
     defp text_body(%Message{} = message) do
@@ -90,6 +108,35 @@ if Code.ensure_loaded?(Swoosh.Email) do
       |> Enum.reject(&is_nil/1)
       |> Enum.join("\n")
     end
+
+    defp digest_section(title, %{lines: []}, _dashboard_url), do: "#{title}\nNone."
+
+    defp digest_section(title, %{lines: lines, total: total}, dashboard_url) do
+      [title | Enum.map(lines, &digest_line/1)]
+      |> Enum.concat([left_out(total - length(lines), dashboard_url)])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("\n")
+    end
+
+    defp digest_line(line) do
+      count_and_location =
+        [occurrences(line.count), line.location]
+        |> Enum.reject(&is_nil/1)
+        |> Enum.join(", ")
+
+      ["- #{line.kind}: #{line.message}", "  #{count_and_location}", line.url && "  #{line.url}"]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("\n")
+    end
+
+    defp left_out(0, _dashboard_url), do: nil
+    defp left_out(count, nil), do: "and #{Format.with_thousands_separators(count)} more"
+    defp left_out(count, dashboard_url), do: "and #{Format.with_thousands_separators(count)} more: #{dashboard_url}"
+
+    defp occurrences(1), do: "1 occurrence"
+    defp occurrences(count), do: "#{Format.with_thousands_separators(count)} occurrences"
+
+    defp day(date), do: Calendar.strftime(date, "%-d %b %Y")
 
     defp opening_line(%Message{trigger: :new}), do: nil
 

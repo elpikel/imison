@@ -53,7 +53,7 @@ defmodule Imison.Web.NotificationsLiveTest do
     assert has_element?(view, ".nav .nav__link[aria-current=page]", "Errors")
   end
 
-  test "the screen shows the email channel's stored recipients, the mailer and sender, and the three rules" do
+  test "the screen shows the email channel's stored recipients, the mailer and sender, and the four rules" do
     start_mailing_imison()
     put_email_channel(["ops@example.com", "kasia@example.com"])
 
@@ -67,7 +67,21 @@ defmodule Imison.Web.NotificationsLiveTest do
     assert has_element?(view, ".rule input[type=checkbox][aria-label='An error keeps happening']")
     refute has_element?(view, ".rule input[type=checkbox][checked][aria-label='An error keeps happening']")
     assert has_element?(view, ".rule .rule__hint", "At most one reminder per error per hour.")
-    assert rule_count(view) == 3
+    refute has_element?(view, ".rule input[type=checkbox][checked][aria-label='Daily summary']")
+    assert has_element?(view, ".rule .rule__hint", "One email at 08:00 UTC with yesterday's counts.")
+    assert rule_count(view) == 4
+  end
+
+  test "turning on Daily summary and saving stores the digest rule enabled" do
+    start_mailing_imison()
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    view
+    |> form("#email-settings", %{"recipients" => "ops@example.com", "rules" => %{"digest" => "true"}})
+    |> render_submit()
+
+    assert stored_rule(:digest).enabled
+    assert has_element?(view, ".rule input[type=checkbox][checked][aria-label='Daily summary']")
   end
 
   test "turning on An error keeps happening and saving stores the still happening rule enabled" do

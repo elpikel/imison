@@ -169,7 +169,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to mute a single error, so that a known issue stops notifying while it stays visible.
   Done when: a muted error sends no notifications and still appears and counts in the list.
 
-- [ ] **NOT-06 Daily digest** · needs: MN-05
+- [x] **NOT-06 Daily digest** · needs: MN-05
   As a developer, I want a daily digest, so that I get a summary instead of single alerts.
   Done when: with the digest rule on, one email a day summarises the day's new, returning and most frequent errors.
 
