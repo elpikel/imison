@@ -5,6 +5,7 @@ defmodule Imison.Notifications.Notifier do
   alias Imison.Config
   alias Imison.Errors.Error
   alias Imison.Notifications
+  alias Imison.Notifications.Rule
   alias Imison.Registry
 
   @task_supervisor Imison.Notifications.TaskSupervisor
@@ -18,8 +19,14 @@ defmodule Imison.Notifications.Notifier do
   end
 
   @spec recorded(Config.t(), Error.t()) :: :ok
-  def recorded(%Config{} = conf, %Error{created: true} = error), do: notify_in_background(conf, error, :new)
-  def recorded(%Config{}, %Error{}), do: :ok
+  def recorded(%Config{} = conf, %Error{} = error) do
+    error |> triggers() |> Enum.each(&notify_in_background(conf, error, &1))
+  end
+
+  @spec triggers(Error.t()) :: [Rule.trigger()]
+  def triggers(%Error{created: true}), do: [:new]
+  def triggers(%Error{reopened: true}), do: [:regression]
+  def triggers(%Error{}), do: []
 
   defp notify_in_background(%Config{name: name} = conf, error, trigger) do
     with {task_supervisor, _value} <- Registry.lookup(name, @task_supervisor),

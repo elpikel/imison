@@ -112,7 +112,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want an email through my app's existing mailer when a new error appears, so that I hear about it without watching the dashboard.
   Done when: a new error sends one email through the host's Swoosh mailer from `from` to the configured recipients, with a link to the error; the email channel compiles only when Swoosh is present; the `Channel` behaviour exists.
 
-- [ ] **MN-02 One notification per event across nodes** · needs: NOT-01, ERR-09
+- [x] **MN-02 One notification per event across nodes** · needs: NOT-01, ERR-09
   As a developer, I want one notification per event even when several nodes catch the same error at the same moment, so that alerts are not duplicated.
   Done when: only the process whose upsert inserted the error sends "new", and only the one whose upsert flipped the error from `resolved` (`record/2` tells it so) sends "regression", even under concurrent capture.
 
