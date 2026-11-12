@@ -102,7 +102,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want my application's frames distinguished from dependency frames, so that I find my code first.
   Done when: frames from the host app's own modules are styled as application frames and dependency frames are muted.
 
-- [ ] **ERR-08 Resolve and ignore** · needs: ERR-02
+- [x] **ERR-08 Resolve and ignore** · needs: ERR-02
   As a developer, I want to resolve or ignore errors, one at a time or in bulk, so that the unresolved list stays a to-do list.
   Done when: from the detail page and from a multi-select on the list, errors move to `resolved` or `ignored` and back to `unresolved`.
 

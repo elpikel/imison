@@ -2,6 +2,7 @@ defmodule Imison.ErrorsTest do
   use Imison.DataCase, async: false
 
   import Ecto.Query
+  import ExUnit.CaptureLog
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Imison.Config
@@ -412,6 +413,121 @@ defmodule Imison.ErrorsTest do
     assert error_id == error.id
     assert [%Occurrence{error_id: ^error_id}] = Repo.all(Occurrence, prefix: PrivatePrefix.name())
     assert Repo.get_by(Error, fingerprint: error.fingerprint) == nil
+  end
+
+  test "setting a status stores it on the given errors and leaves the others as they were" do
+    conf = config()
+    {:ok, first} = Errors.record(conf, occurrence(kind: "KeyError"))
+    {:ok, second} = Errors.record(conf, occurrence(kind: "ArgumentError"))
+    {:ok, untouched} = Errors.record(conf, occurrence(kind: "MatchError"))
+
+    assert Errors.set_status(conf, [first.id, second.id], :resolved) == {:ok, 2}
+
+    assert %Error{status: :resolved} = Repo.get!(Error, first.id)
+    assert %Error{status: :resolved} = Repo.get!(Error, second.id)
+    assert %Error{status: :unresolved} = Repo.get!(Error, untouched.id)
+  end
+
+  test "a status given as text is stored like the same status given as an atom" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+
+    assert Errors.set_status(conf, [error.id], "ignored") == {:ok, 1}
+
+    assert %Error{status: :ignored} = Repo.get!(Error, error.id)
+  end
+
+  test "an unknown status is rejected and no error changes" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+
+    assert Errors.set_status(conf, [error.id], "deleted") == {:error, :invalid_status}
+    assert Errors.set_status(conf, [error.id], :deleted) == {:error, :invalid_status}
+
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+  end
+
+  test "ids given as text are read as error ids and anything that is not an error id is skipped" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+
+    assert Errors.set_status(conf, [Integer.to_string(error.id), "abc", "9223372036854775808", -1, nil], :resolved) ==
+             {:ok, 1}
+
+    assert %Error{status: :resolved} = Repo.get!(Error, error.id)
+  end
+
+  test "a status change moves the error's updated_at forward even when it is ahead of the clock" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    ahead_of_the_clock = DateTime.shift(DateTime.utc_now(), hour: 1)
+    set_updated_at(error, ahead_of_the_clock)
+
+    {:ok, 1} = Errors.set_status(conf, [error.id], :resolved)
+
+    assert DateTime.after?(Repo.get!(Error, error.id).updated_at, ahead_of_the_clock)
+  end
+
+  test "an error resolved by a status change is reopened by its next occurrence" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    {:ok, 1} = Errors.set_status(conf, [error.id], :resolved)
+
+    {:ok, recorded} = Errors.record(conf, occurrence([]))
+
+    assert recorded.reopened
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+  end
+
+  test "an error resolved by a status change while its updated_at is ahead of the clock is still reopened by its next occurrence" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    set_updated_at(error, DateTime.shift(DateTime.utc_now(), hour: 1))
+    {:ok, 1} = Errors.set_status(conf, [error.id], :resolved)
+
+    {:ok, recorded} = Errors.record(conf, occurrence([]))
+
+    assert recorded.reopened
+  end
+
+  test "resolving an error that came back keeps the time it came back" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    {:ok, 1} = Errors.set_status(conf, [error.id], :resolved)
+    {:ok, _recorded} = Errors.record(conf, occurrence([]))
+    %Error{regressed_at: regressed_at} = Repo.get!(Error, error.id)
+
+    {:ok, 1} = Errors.set_status(conf, [error.id], :resolved)
+
+    assert %Error{regressed_at: ^regressed_at} = Repo.get!(Error, error.id)
+  end
+
+  test "with a configured prefix the status is changed in that schema" do
+    PrivatePrefix.migrate_up()
+    conf = config(prefix: PrivatePrefix.name())
+    {:ok, error} = Errors.record(conf, occurrence(kind: "Imison.PrefixError#{System.unique_integer([:positive])}"))
+
+    assert Errors.set_status(conf, [error.id], :ignored) == {:ok, 1}
+
+    assert %Error{status: :ignored} = Repo.get!(Error, error.id, prefix: PrivatePrefix.name())
+  end
+
+  test "with no PubSub running under the configured name, a status change is still stored and the failed broadcast is logged" do
+    conf = config(pubsub: Imison.Test.MissingPubSub)
+    {:ok, error} = Errors.record(conf, occurrence([]))
+
+    {result, log} = with_log(fn -> Errors.set_status(conf, [error.id], :resolved) end)
+
+    assert result == {:ok, 1}
+    assert %Error{status: :resolved} = Repo.get!(Error, error.id)
+    assert log =~ "Imison failed to broadcast a status change"
+  end
+
+  defp set_updated_at(%Error{id: error_id}, updated_at) do
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.id == ^error_id)
+    |> Repo.update_all(set: [updated_at: updated_at])
   end
 
   defp config(opts \\ []) do
