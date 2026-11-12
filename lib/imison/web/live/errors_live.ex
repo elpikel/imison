@@ -8,7 +8,10 @@ defmodule Imison.Web.ErrorsLive do
   With the instance's `pubsub` set, the connected list subscribes to the
   errors it records and reloads the page and counts at most once a second,
   showing the design's Live indicator. Status changes made elsewhere reload it
-  the same way.
+  the same way. Broadcasts only reach lists on nodes that share the PubSub, so
+  without `pubsub`, or while this node has no connected nodes, the connected
+  list also refreshes from the database every few seconds, and the indicator
+  says so.
 
   Rows can be selected, one by one or all at once; while some are, the bulk
   bar offers the status changes that move them off the current tab. The
@@ -26,6 +29,7 @@ defmodule Imison.Web.ErrorsLive do
   alias Imison.Web.Paths
 
   @live_reload_interval_ms 1_000
+  @refresh_interval_ms 5_000
   @live_reload_events [:recorded, :status_changed]
   @bulk_actions %{
     unresolved: [:resolved, :ignored],
@@ -39,14 +43,16 @@ defmodule Imison.Web.ErrorsLive do
     conf = Imison.config(imison_name)
 
     {:ok,
-     assign(socket,
+     socket
+     |> assign(
        conf: conf,
        dashboard_path: dashboard_path,
        page_title: "Errors",
-       live: connected?(socket) and Broadcast.subscribe(conf) == :ok,
+       subscribed: connected?(socket) and Broadcast.subscribe(conf) == :ok,
        live_reload: :idle,
        selected: MapSet.new()
-     )}
+     )
+     |> start_refreshing()}
   end
 
   @impl Phoenix.LiveView
@@ -62,11 +68,17 @@ defmodule Imison.Web.ErrorsLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:imison, event, _error_ids}, %{assigns: %{live_reload: :idle}} = socket)
-      when event in @live_reload_events, do: {:noreply, reload_and_hold(socket)}
-
   def handle_info({:imison, event, _error_ids}, socket) when event in @live_reload_events,
-    do: {:noreply, assign(socket, live_reload: :pending)}
+    do: {:noreply, request_reload(socket)}
+
+  def handle_info(:refresh, %{assigns: %{subscribed: subscribed}} = socket) do
+    schedule_refresh()
+
+    case update_source(subscribed) do
+      :polling -> {:noreply, socket |> assign(live: :polling) |> request_reload()}
+      :broadcasts -> {:noreply, assign(socket, live: :broadcasts)}
+    end
+  end
 
   def handle_info(:live_reload_hold_over, %{assigns: %{live_reload: :pending}} = socket),
     do: {:noreply, reload_and_hold(socket)}
@@ -276,6 +288,26 @@ defmodule Imison.Web.ErrorsLive do
       now: now
     )
   end
+
+  defp start_refreshing(%{assigns: %{subscribed: subscribed}} = socket) do
+    if connected?(socket) do
+      schedule_refresh()
+      assign(socket, live: update_source(subscribed))
+    else
+      assign(socket, live: nil)
+    end
+  end
+
+  defp schedule_refresh, do: Process.send_after(self(), :refresh, @refresh_interval_ms)
+
+  defp update_source(true = _subscribed) do
+    if Node.list() == [], do: :polling, else: :broadcasts
+  end
+
+  defp update_source(false = _subscribed), do: :polling
+
+  defp request_reload(%{assigns: %{live_reload: :idle}} = socket), do: reload_and_hold(socket)
+  defp request_reload(socket), do: assign(socket, live_reload: :pending)
 
   defp reload_and_hold(socket) do
     Process.send_after(self(), :live_reload_hold_over, @live_reload_interval_ms)

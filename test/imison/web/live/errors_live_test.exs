@@ -551,18 +551,94 @@ defmodule Imison.Web.ErrorsLiveTest do
     assert document |> LazyHTML.query(".live") |> Enum.empty?()
   end
 
-  test "without pubsub the list shows no live indicator and lists recorded errors on reload" do
+  test "without pubsub the open list shows a newly recorded error once the refresh interval passes" do
     start_imison(name: Dashboard)
     {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
 
     capture_and_wait(kind: "KeyError", occurred_at: DateTime.utc_now())
 
-    refute has_element?(view, ".live")
-    {:ok, reloaded_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
-    assert texts(reloaded_view, @listed_kinds) == ["KeyError"]
+    assert listed_within?(view, "KeyError", 6_000)
   end
 
-  test "with no PubSub running under the configured name, the connected list still serves errors, without the live indicator, and logs the failure" do
+  test "without pubsub a refresh shows the errors recorded since the page opened and updates the tab counts" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    assert texts(view, @listed_kinds) == ["KeyError"]
+
+    record(kind: "ArgumentError", occurred_at: DateTime.utc_now())
+    refresh(view)
+
+    assert texts(view, @listed_kinds) == ["ArgumentError", "KeyError"]
+    assert tab_counts(view) == %{"Unresolved" => "2", "Resolved" => "0", "Ignored" => "0"}
+  end
+
+  test "with pubsub but no connected nodes the open list shows an error another node recorded after a refresh" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    record(kind: "KeyError")
+
+    refresh(view)
+
+    assert texts(view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "with pubsub and a connected node a refresh does not reload the list" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+    connect_another_node()
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    record(kind: "KeyError")
+
+    refresh(view)
+
+    assert texts(view, @listed_kinds) == []
+  end
+
+  test "a refresh keeps the search and the selected rows that are still listed" do
+    start_imison(name: Dashboard, enabled: false)
+    kept = record(kind: "KeyError", message: "timeout while charging")
+    resolved_elsewhere = record(kind: "ArgumentError", message: "timeout in mailer")
+    record(kind: "MatchError", message: "no match")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=timeout")
+    tick(view, kept)
+    tick(view, resolved_elsewhere)
+    set_status(resolved_elsewhere, :resolved)
+    record(kind: "DBConnection.ConnectionError", message: "timeout on checkout", occurred_at: DateTime.utc_now())
+
+    refresh(view)
+
+    assert texts(view, @listed_kinds) == ["DBConnection.ConnectionError", "KeyError"]
+    assert has_element?(view, "#error-search input[name=q][value=timeout]")
+    assert has_element?(view, ".bulkbar", "1 selected")
+    assert has_element?(view, "#error-#{kept.id} .error-row__check[checked]")
+  end
+
+  test "without pubsub the Live indicator says the list refreshes every few seconds" do
+    start_imison(name: Dashboard, enabled: false)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".topbar .live[title='Refreshes from the database every few seconds.']", "Live")
+  end
+
+  test "with pubsub but no connected nodes the Live indicator says the list refreshes every few seconds" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".topbar .live[title='Refreshes from the database every few seconds.']")
+  end
+
+  test "with pubsub and a connected node the Live indicator says new events appear as they happen" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+    connect_another_node()
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert has_element?(view, ".topbar .live[title='Connected. New events appear without reloading.']")
+  end
+
+  test "with no PubSub running under the configured name, the connected list still serves errors, refreshes from the database, and logs the failure" do
     start_imison(name: Dashboard, pubsub: Imison.Test.MissingPubSub, enabled: false)
     record(kind: "KeyError")
 
@@ -571,7 +647,7 @@ defmodule Imison.Web.ErrorsLiveTest do
 
     assert {:ok, view, _html} = result
     assert texts(view, @listed_kinds) == ["KeyError"]
-    refute has_element?(view, ".live")
+    assert has_element?(view, ".topbar .live[title='Refreshes from the database every few seconds.']")
     assert log =~ ~r/domain=elixir\.imison \[error\] Imison failed to subscribe to recorded errors/
   end
 
@@ -877,6 +953,20 @@ defmodule Imison.Web.ErrorsLiveTest do
     |> Repo.update_all(set: [status: status])
 
     recorded
+  end
+
+  defp refresh(view), do: send(view.pid, :refresh)
+
+  defp connect_another_node do
+    if not Node.alive?() do
+      {_output, 0} = System.cmd("epmd", ["-daemon"])
+      {:ok, _net_kernel} = Node.start(:"imison_test@127.0.0.1", name_domain: :longnames)
+      on_exit(fn -> Node.stop() end)
+    end
+
+    [_name, host] = node() |> Atom.to_string() |> String.split("@")
+    peer = %{name: :peer.random_name(), host: String.to_charlist(host), longnames: :net_kernel.longnames()}
+    start_supervised!(%{id: :peer, start: {:peer, :start_link, [peer]}})
   end
 
   defp tick(view, %Error{id: error_id}) do

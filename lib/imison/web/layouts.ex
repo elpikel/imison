@@ -36,14 +36,15 @@ defmodule Imison.Web.Layouts do
 
   @doc """
   The top bar with the main navigation (Errors and Notifications, `current`
-  marking the page's own link), the Live indicator when `live` is true, and
+  marking the page's own link), the Live indicator when `live` says how the
+  page updates (`:broadcasts` or `:polling`, each with its own title), and
   the Sign out button, and the page below it, headed by the
   `info` and `error` flash messages.
   """
   attr(:dashboard_path, :string, required: true)
   attr(:current, :atom, values: [:errors, :notifications], default: :errors)
   attr(:flash, :map, default: %{})
-  attr(:live, :boolean, default: false)
+  attr(:live, :atom, values: [nil, :broadcasts, :polling], default: nil)
   slot(:inner_block, required: true)
 
   @spec app(map()) :: Rendered.t()
@@ -76,7 +77,7 @@ defmodule Imison.Web.Layouts do
         </.link>
       </nav>
       <div class="topbar__end">
-        <span :if={@live} class="live" title="Connected. New events appear without reloading.">
+        <span :if={@live} class="live" title={live_indicator_title(@live)}>
           <span class="live__dot"></span><span>Live</span>
         </span>
         <.form for={%{}} action={Paths.logout(@dashboard_path)} method="post">
@@ -91,6 +92,9 @@ defmodule Imison.Web.Layouts do
     </main>
     """
   end
+
+  defp live_indicator_title(:broadcasts), do: "Connected. New events appear without reloading."
+  defp live_indicator_title(:polling), do: "Refreshes from the database every few seconds."
 
   defp current_page(current, current), do: "page"
   defp current_page(_current, _link), do: nil

@@ -153,7 +153,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to step through individual occurrences, so that I can compare what differed between them.
   Done when: the detail page moves to the previous and next occurrence of the error.
 
-- [ ] **MN-04 Live updates without clustering** · needs: ERR-04
+- [x] **MN-04 Live updates without clustering** · needs: ERR-04
   As a developer, I want the dashboard to stay current when my nodes are not clustered, so that live updates do not depend on distributed Erlang.
   Done when: without `pubsub`, or without connected nodes, an open list refreshes from the database every few seconds.
 
