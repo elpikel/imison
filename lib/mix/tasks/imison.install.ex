@@ -9,6 +9,28 @@ defmodule Mix.Tasks.Imison.Install.Docs do
     "mix imison.install"
   end
 
+  def manual_short_doc do
+    "Prints the steps to install Imison in a Phoenix app (Igniter makes them for you)"
+  end
+
+  def manual_long_doc do
+    """
+    Prints the steps to install Imison in a Phoenix app by hand, filled with the
+    app's name and modules: its config, its place in the supervision tree, the
+    migration that creates its tables, the dashboard route and the formatter.
+    It changes no file.
+
+    ## Example
+
+    ```sh
+    #{example()}
+    ```
+
+    With `#{Imison.Install.igniter_dependency()}` in the app's deps, the same task
+    makes these changes itself.
+    """
+  end
+
   def long_doc do
     """
     Installs Imison in a Phoenix app: its config, its place in the supervision
@@ -60,9 +82,9 @@ if Code.ensure_loaded?(Igniter) do
     alias Igniter.Project.Config
     alias Igniter.Project.Formatter
     alias Igniter.Project.Module, as: ProjectModule
+    alias Imison.Install
+    alias Imison.Migrations.Postgres
 
-    @dashboard_path "/errors"
-    @migration_version 1
     @dev_username "admin"
     @dev_password_bytes 18
     @test_credential "test"
@@ -101,7 +123,7 @@ if Code.ensure_loaded?(Igniter) do
       |> mount_dashboard()
       |> Igniter.add_notice("""
       Imison is installed. Run `mix ecto.migrate` to create its tables; the
-      dashboard is at #{@dashboard_path}. In production, set IMISON_USER and
+      dashboard is at #{Install.dashboard_path()}. In production, set IMISON_USER and
       IMISON_PASSWORD; the dev login is in config/dev.exs.
       """)
     end
@@ -162,9 +184,9 @@ if Code.ensure_loaded?(Igniter) do
     defp generate_migration(igniter, repo) do
       EctoLibrary.gen_migration(igniter, repo, "add_imison",
         body: """
-        def up, do: Imison.Migration.up(version: #{@migration_version})
+        def up, do: Imison.Migration.up(version: #{Postgres.current_version()})
 
-        def down, do: Imison.Migration.down(version: #{@migration_version})
+        def down, do: Imison.Migration.down(version: #{Postgres.current_version()})
         """,
         on_exists: :skip
       )
@@ -181,7 +203,7 @@ if Code.ensure_loaded?(Igniter) do
               scope "/" do
                 pipe_through :browser
 
-                imison_dashboard "#{@dashboard_path}"
+                imison_dashboard "#{Install.dashboard_path()}"
               end
           """)
 
@@ -196,7 +218,7 @@ if Code.ensure_loaded?(Igniter) do
               """
               pipe_through :browser
 
-              imison_dashboard #{inspect(@dashboard_path)}
+              imison_dashboard #{inspect(Install.dashboard_path())}
               """,
               router: router,
               placement: :after
@@ -280,18 +302,20 @@ if Code.ensure_loaded?(Igniter) do
   end
 else
   defmodule Mix.Tasks.Imison.Install do
-    @shortdoc "Installs Imison in a Phoenix app (requires Igniter)"
+    @shortdoc __MODULE__.Docs.manual_short_doc()
 
-    @moduledoc __MODULE__.Docs.long_doc()
+    @moduledoc __MODULE__.Docs.manual_long_doc()
 
     use Mix.Task
 
+    alias Imison.Install.ManualSteps
+
     @impl Mix.Task
     def run(_argv) do
-      Mix.raise("""
-      The task 'imison.install' requires Igniter. Add {:igniter, "~> 0.8", only: [:dev]}
-      to your deps and run `mix deps.get`, then try again.
-      """)
+      case Mix.Project.config()[:app] do
+        nil -> Mix.raise("Run `mix imison.install` inside the Phoenix app's project, not an umbrella root.")
+        app_name -> app_name |> ManualSteps.text() |> Mix.shell().info()
+      end
     end
   end
 end
