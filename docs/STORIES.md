@@ -149,7 +149,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want repeated failed logins slowed down, so that the password cannot be brute-forced.
   Done when: failed attempts are counted in the database and each further attempt is delayed, across nodes.
 
-- [ ] **ERR-07 Step through occurrences** · needs: ERR-05
+- [x] **ERR-07 Step through occurrences** · needs: ERR-05
   As a developer, I want to step through individual occurrences, so that I can compare what differed between them.
   Done when: the detail page moves to the previous and next occurrence of the error.
 

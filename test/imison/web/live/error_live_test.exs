@@ -381,6 +381,124 @@ defmodule Imison.Web.ErrorLiveTest do
     assert has_element?(view, ".error-head__meta .flag--unresolved", "Unresolved")
   end
 
+  test "the detail page opens on the latest of three occurrences, with its time, stack trace and context" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record_three_attempts()
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    assert has_element?(view, ".occurrence-nav__when strong", "Occurrence 3 of 3")
+    assert has_element?(view, ".occurrence-nav__when .muted", "11 Nov 2026, 12:00:00 UTC")
+    assert frames(view) == [%{function: "Checkout.Payments.charge/1", location: "lib/checkout/payments.ex:103"}]
+    assert panel(view, "Logger metadata") == %{"attempt" => "3"}
+  end
+
+  test "clicking Older shows the previous occurrence and names it in the URL" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record_three_attempts()
+    [_oldest_id, middle_id, _latest_id] = occurrence_ids_oldest_first(error)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    view |> element(".occurrence-nav a", "Older") |> render_click()
+
+    assert_patch(view, "/errors/errors/#{error.id}?occurrence=#{middle_id}")
+    assert has_element?(view, ".occurrence-nav__when strong", "Occurrence 2 of 3")
+    assert has_element?(view, ".occurrence-nav__when .muted", "11 Nov 2026, 11:00:00 UTC")
+    assert panel(view, "Logger metadata") == %{"attempt" => "2"}
+  end
+
+  test "clicking Newer on an older occurrence shows the next one" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record_three_attempts()
+    [oldest_id, middle_id, _latest_id] = occurrence_ids_oldest_first(error)
+
+    {:ok, view, _html} =
+      live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}?occurrence=#{oldest_id}")
+
+    view |> element(".occurrence-nav a", "Newer") |> render_click()
+
+    assert_patch(view, "/errors/errors/#{error.id}?occurrence=#{middle_id}")
+    assert has_element?(view, ".occurrence-nav__when strong", "Occurrence 2 of 3")
+    assert panel(view, "Logger metadata") == %{"attempt" => "2"}
+  end
+
+  test "on the latest occurrence Newer is disabled and on the first one Older is disabled" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record_three_attempts()
+    [oldest_id, _middle_id, _latest_id] = occurrence_ids_oldest_first(error)
+    conn = sign_in("/errors", "admin", "secret")
+
+    {:ok, latest_view, _html} = live(conn, "/errors/errors/#{error.id}")
+    {:ok, oldest_view, _html} = live(conn, "/errors/errors/#{error.id}?occurrence=#{oldest_id}")
+
+    assert has_element?(latest_view, ".occurrence-nav button[disabled]", "Newer")
+    assert has_element?(latest_view, ".occurrence-nav a", "Older")
+    assert has_element?(oldest_view, ".occurrence-nav__when strong", "Occurrence 1 of 3")
+    assert has_element?(oldest_view, ".occurrence-nav button[disabled]", "Older")
+    assert has_element?(oldest_view, ".occurrence-nav a", "Newer")
+  end
+
+  test "an occurrence in the URL that belongs to another error or isn't a number shows the latest occurrence" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record_three_attempts()
+    other_error = record(kind: "KeyError")
+    [other_occurrence_id] = occurrence_ids_oldest_first(other_error)
+    conn = sign_in("/errors", "admin", "secret")
+
+    for occurrence <- [other_occurrence_id, "abc", "99999999999999999999"] do
+      {:ok, view, _html} = live(conn, "/errors/errors/#{error.id}?occurrence=#{occurrence}")
+
+      assert has_element?(view, ".occurrence-nav__when strong", "Occurrence 3 of 3")
+      assert panel(view, "Logger metadata") == %{"attempt" => "3"}
+    end
+  end
+
+  test "an error whose occurrences were all pruned shows no occurrence navigation" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError", occurred_at: days_ago(40))
+    Errors.prune(Imison.config(Dashboard), DateTime.utc_now())
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    assert has_element?(view, ".error-head__kind", "KeyError")
+    refute has_element?(view, ".occurrence-nav")
+  end
+
+  test "resolving an error while an older occurrence is shown keeps that occurrence shown" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record_three_attempts()
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+    view |> element(".occurrence-nav a", "Older") |> render_click()
+
+    view |> element(".rail .btn--primary", "Resolve") |> render_click()
+
+    assert has_element?(view, ".error-head__meta .flag--resolved", "Resolved")
+    assert has_element?(view, ".occurrence-nav__when strong", "Occurrence 2 of 3")
+    assert panel(view, "Logger metadata") == %{"attempt" => "2"}
+  end
+
+  defp record_three_attempts do
+    [error | _errors] =
+      for attempt <- [3, 1, 2] do
+        record(
+          stacktrace: [{Checkout.Payments, :charge, 1, [file: ~c"lib/checkout/payments.ex", line: 100 + attempt]}],
+          context: %{"metadata" => %{"attempt" => attempt}},
+          occurred_at: DateTime.new!(~D[2026-11-11], Time.new!(9 + attempt, 0, 0, {0, 6}))
+        )
+      end
+
+    error
+  end
+
+  defp occurrence_ids_oldest_first(%Error{id: error_id}) do
+    Occurrence
+    |> from(as: :occurrence)
+    |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
+    |> order_by([occurrence: occurrence], asc: occurrence.occurred_at, asc: occurrence.id)
+    |> select([occurrence: occurrence], occurrence.id)
+    |> Repo.all()
+  end
+
   defp record(overrides) do
     {:ok, error} = Errors.record(Imison.config(Dashboard), occurrence(overrides))
     error

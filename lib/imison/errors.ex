@@ -21,11 +21,20 @@ defmodule Imison.Errors do
           optional(:release) => String.t() | nil
         }
 
+  @type stepped_occurrence :: %{
+          occurrence: Occurrence.t(),
+          position: pos_integer(),
+          total: pos_integer(),
+          older_id: integer() | nil,
+          newer_id: integer() | nil
+        }
+
   @listed_errors_limit 100
   @heat_strip_hours 24
   @largest_id 9_223_372_036_854_775_807
   @status_broadcast_failure "Imison failed to broadcast a status change"
   @prune_batch_size 10_000
+  @nearest_first %{older: :desc, newer: :asc}
 
   @spec list(Config.t(), status: atom(), search: String.t()) :: [Error.t()]
   def list(%Config{repo: repo, prefix: prefix}, opts) do
@@ -42,7 +51,7 @@ defmodule Imison.Errors do
 
   @spec get(Config.t(), integer() | String.t()) :: Error.t() | nil
   def get(%Config{repo: repo, prefix: prefix}, id) do
-    case error_id(id) do
+    case database_id(id) do
       nil ->
         nil
 
@@ -54,14 +63,21 @@ defmodule Imison.Errors do
     end
   end
 
-  @spec latest_occurrence(Config.t(), integer()) :: Occurrence.t() | nil
-  def latest_occurrence(%Config{repo: repo, prefix: prefix}, error_id) do
-    Occurrence
-    |> from(as: :occurrence)
-    |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
-    |> order_by([occurrence: occurrence], desc: occurrence.occurred_at, desc: occurrence.id)
-    |> limit(1)
-    |> repo.one(prefix: prefix)
+  @spec occurrence(Config.t(), integer(), integer() | String.t() | nil) :: stepped_occurrence() | nil
+  def occurrence(%Config{} = conf, error_id, occurrence_id) do
+    case selected_occurrence(conf, error_id, database_id(occurrence_id)) do
+      nil ->
+        nil
+
+      %Occurrence{} = occurrence ->
+        conf
+        |> position_among_occurrences(occurrence)
+        |> Map.merge(%{
+          occurrence: occurrence,
+          older_id: neighbour_id(conf, occurrence, :older),
+          newer_id: neighbour_id(conf, occurrence, :newer)
+        })
+    end
   end
 
   @spec count_by_status(Config.t(), search: String.t()) :: %{atom() => non_neg_integer()}
@@ -138,23 +154,92 @@ defmodule Imison.Errors do
     }
   end
 
-  defp error_id(id) when is_integer(id) and id in 1..@largest_id//1, do: id
+  defp database_id(id) when is_integer(id) and id in 1..@largest_id//1, do: id
 
-  defp error_id(id) when is_binary(id) do
+  defp database_id(id) when is_binary(id) do
     case Integer.parse(id) do
-      {integer_id, ""} -> error_id(integer_id)
+      {integer_id, ""} -> database_id(integer_id)
       _not_an_id -> nil
     end
   end
 
-  defp error_id(_id), do: nil
+  defp database_id(_id), do: nil
+
+  defp selected_occurrence(conf, error_id, nil), do: latest_occurrence(conf, error_id)
+
+  defp selected_occurrence(%Config{repo: repo, prefix: prefix} = conf, error_id, occurrence_id) do
+    requested_occurrence =
+      error_id
+      |> occurrences_of_error()
+      |> where([occurrence: occurrence], occurrence.id == ^occurrence_id)
+      |> repo.one(prefix: prefix)
+
+    requested_occurrence || latest_occurrence(conf, error_id)
+  end
+
+  defp latest_occurrence(%Config{repo: repo, prefix: prefix}, error_id) do
+    error_id
+    |> occurrences_of_error()
+    |> order_by([occurrence: occurrence], desc: occurrence.occurred_at, desc: occurrence.id)
+    |> limit(1)
+    |> repo.one(prefix: prefix)
+  end
+
+  defp position_among_occurrences(%Config{repo: repo, prefix: prefix}, %Occurrence{} = occurrence) do
+    %Occurrence{error_id: error_id, occurred_at: occurred_at, id: id} = occurrence
+
+    error_id
+    |> occurrences_of_error()
+    |> select([occurrence: occurrence], %{
+      total: count(occurrence.id),
+      position:
+        filter(
+          count(occurrence.id),
+          occurrence.occurred_at < ^occurred_at or (occurrence.occurred_at == ^occurred_at and occurrence.id <= ^id)
+        )
+    })
+    |> repo.one(prefix: prefix)
+  end
+
+  defp neighbour_id(%Config{repo: repo, prefix: prefix}, %Occurrence{error_id: error_id} = occurrence, direction) do
+    error_id
+    |> occurrences_of_error()
+    |> where(^neighbour_side(occurrence, direction))
+    |> order_by([occurrence: occurrence], [
+      {^Map.fetch!(@nearest_first, direction), occurrence.occurred_at},
+      {^Map.fetch!(@nearest_first, direction), occurrence.id}
+    ])
+    |> limit(1)
+    |> select([occurrence: occurrence], occurrence.id)
+    |> repo.one(prefix: prefix)
+  end
+
+  defp neighbour_side(%Occurrence{occurred_at: occurred_at, id: id}, :older) do
+    dynamic(
+      [occurrence: occurrence],
+      occurrence.occurred_at < ^occurred_at or (occurrence.occurred_at == ^occurred_at and occurrence.id < ^id)
+    )
+  end
+
+  defp neighbour_side(%Occurrence{occurred_at: occurred_at, id: id}, :newer) do
+    dynamic(
+      [occurrence: occurrence],
+      occurrence.occurred_at > ^occurred_at or (occurrence.occurred_at == ^occurred_at and occurrence.id > ^id)
+    )
+  end
+
+  defp occurrences_of_error(error_id) do
+    Occurrence
+    |> from(as: :occurrence)
+    |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
+  end
 
   defp known_status(status) when is_atom(status), do: Enum.find(Error.statuses(), &(&1 == status))
   defp known_status(status) when is_binary(status), do: Enum.find(Error.statuses(), &(Atom.to_string(&1) == status))
   defp known_status(_status), do: nil
 
   defp store_status(%Config{repo: repo, prefix: prefix} = conf, ids, status) do
-    error_ids = ids |> Enum.map(&error_id/1) |> Enum.reject(&is_nil/1)
+    error_ids = ids |> Enum.map(&database_id/1) |> Enum.reject(&is_nil/1)
 
     {count, changed_ids} =
       Error
