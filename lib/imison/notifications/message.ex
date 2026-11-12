@@ -4,7 +4,9 @@ defmodule Imison.Notifications.Message do
   `c:Imison.Notifications.Channel.deliver/3`.
 
   `trigger` is what the notification is about (`:new` for an error seen for
-  the first time, `:regression` for a resolved error that came back, `:test`
+  the first time, `:regression` for a resolved error that came back,
+  `:still_happening` for the reminder, at most once an hour, about an
+  unresolved error that keeps happening, `:test`
   for the test message sent from the notifications screen, which is about no
   error, so its error fields are `nil`);
   `regressed_at` is when the error last came back, `nil` if it never did;

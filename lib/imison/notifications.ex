@@ -111,9 +111,23 @@ defmodule Imison.Notifications do
     end
   end
 
-  defp deliver(%Config{} = conf, %{module: module, setting: setting}, %Message{} = message) do
+  defp deliver(%Config{} = conf, channel, %Message{} = message) do
+    case Delivery.period(message.trigger, message.last_seen_at) do
+      nil -> deliver_and_record(conf, channel, message)
+      period -> deliver_once_per_period(conf, channel, %{message: message, period: period})
+    end
+  end
+
+  defp deliver_and_record(conf, %{module: module, setting: setting}, message) do
     outcome = attempt_delivery(conf, %{module: module, config: setting.config}, message)
     record_delivery(conf, setting, %{message: message, status: Delivery.status(outcome)})
+  end
+
+  defp deliver_once_per_period(conf, %{module: module, setting: setting}, %{message: message, period: period}) do
+    with {:ok, delivery} <- claim_delivery(conf, setting, %{message: message, period: period}) do
+      outcome = attempt_delivery(conf, %{module: module, config: setting.config}, message)
+      finish_delivery(conf, delivery, Delivery.status(outcome))
+    end
   end
 
   defp attempt_delivery(conf, %{module: module, config: channel_config}, message) do
@@ -143,5 +157,33 @@ defmodule Imison.Notifications do
       },
       prefix: prefix
     )
+  end
+
+  defp claim_delivery(%Config{repo: repo, prefix: prefix}, %ChannelSetting{id: channel_id}, %{
+         message: message,
+         period: period
+       }) do
+    %Delivery{
+      channel_id: channel_id,
+      error_id: message.error_id,
+      trigger: message.trigger,
+      period: period,
+      status: :pending
+    }
+    |> repo.insert!(
+      prefix: prefix,
+      on_conflict: :nothing,
+      conflict_target: [:channel_id, :error_id, :trigger, :period]
+    )
+    |> case do
+      %Delivery{id: nil} -> :already_claimed
+      %Delivery{} = delivery -> {:ok, delivery}
+    end
+  end
+
+  defp finish_delivery(%Config{repo: repo, prefix: prefix}, %Delivery{} = delivery, status) do
+    delivery
+    |> Ecto.Changeset.change(status: status, sent_at: DateTime.utc_now())
+    |> repo.update!(prefix: prefix)
   end
 end

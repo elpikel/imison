@@ -10,6 +10,7 @@ defmodule Imison.Capture.Worker do
   alias Imison.Errors.Broadcast
   alias Imison.Errors.Error
   alias Imison.Notifications.Notifier
+  alias Imison.Notifications.ReminderMemo
 
   @default_queue_limit 1_000
   @broadcast_failure "Imison failed to broadcast a recorded error"
@@ -29,20 +30,27 @@ defmodule Imison.Capture.Worker do
   end
 
   @impl GenServer
-  def init(%Config{} = conf), do: {:ok, conf}
+  def init(%Config{} = conf), do: {:ok, %{conf: conf, reminders: ReminderMemo.new()}}
 
   @impl GenServer
-  def handle_cast({:record, event}, %Config{} = conf) do
-    if not ignored?(conf, event), do: record_and_broadcast(conf, event)
-    {:noreply, conf}
+  def handle_cast({:record, event}, %{conf: conf} = state) do
+    if ignored?(conf, event) do
+      {:noreply, state}
+    else
+      {:noreply, record_and_broadcast(state, event)}
+    end
   end
 
   defp ignored?(%Config{ignore: ignore}, %{kind: kind}), do: Enum.any?(ignore, &(inspect(&1) == kind))
 
-  defp record_and_broadcast(conf, event) do
-    with {:ok, %Error{id: error_id} = error} <- record(conf, event) do
-      broadcast_recorded(conf, error_id)
-      Notifier.recorded(conf, error)
+  defp record_and_broadcast(%{conf: conf, reminders: reminders} = state, event) do
+    case record(conf, event) do
+      {:ok, %Error{id: error_id} = error} ->
+        broadcast_recorded(conf, error_id)
+        %{state | reminders: Notifier.recorded(conf, error, reminders)}
+
+      _not_recorded ->
+        state
     end
   end
 

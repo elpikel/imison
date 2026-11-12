@@ -83,10 +83,11 @@ defmodule Imison.Migrations.Postgres.V01 do
       add :error_id, error_reference
       add :trigger, :text, null: false
       add :status, :text, null: false
+      add :period, :utc_datetime
       add :sent_at, :utc_datetime_usec
     end
 
-    create_if_not_exists index(:imison_deliveries, [:channel_id], prefix: prefix)
+    create_if_not_exists unique_index(:imison_deliveries, [:channel_id, :error_id, :trigger, :period], prefix: prefix)
     create_if_not_exists index(:imison_deliveries, [:error_id], prefix: prefix)
 
     create_if_not_exists table(:imison_login_failures, primary_key: false, prefix: prefix) do
