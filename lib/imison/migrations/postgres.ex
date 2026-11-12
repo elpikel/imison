@@ -9,6 +9,9 @@ defmodule Imison.Migrations.Postgres do
   @current_version 1
   @default_prefix "public"
 
+  @spec current_version() :: pos_integer()
+  def current_version, do: @current_version
+
   @impl Imison.Migration
   def up(opts) do
     opts = with_defaults(opts, @current_version)

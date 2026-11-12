@@ -6,7 +6,7 @@ An error tracker you add to a Phoenix app as a library, installed the way Oban i
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it) and `igniter` (`mix imison.install`; the host adds it, usually `only: [:dev]`). Test only: `phx_new` (the installer's tests generate a Phoenix project with it). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it) and `igniter` (`mix imison.install` makes the changes with it and prints them as manual steps without it; the host adds it, usually `only: [:dev]`). Test only: `phx_new` (the installer's tests generate a Phoenix project with it). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
 
 ## Installation
 
@@ -33,7 +33,77 @@ mix ecto.migrate
 - the router: `import Imison.Web.Router` and `imison_dashboard "/errors"` in a `scope "/"` piped through `:browser`
 - `.formatter.exs`: `:imison` in `import_deps`
 
-After `mix ecto.migrate` the dashboard is at `/errors`. The app boots in dev and test without environment variables; in production set `IMISON_USER` and `IMISON_PASSWORD`, or the boot fails. To mount the dashboard at another path, change `"/errors"` in the router (and `dashboard_url`, if set). Each change is described by hand in the sections below; the full design is in [`docs/PROJECT.md`](docs/PROJECT.md#installation).
+After `mix ecto.migrate` the dashboard is at `/errors`. The app boots in dev and test without environment variables; in production set `IMISON_USER` and `IMISON_PASSWORD`, or the boot fails. To mount the dashboard at another path, change `"/errors"` in the router (and `dashboard_url`, if set). The options are described in the sections below; the full design is in [`docs/PROJECT.md`](docs/PROJECT.md#installation).
+
+### Installing without Igniter
+
+Without Igniter in the app's deps, `mix imison.install` changes no file: it prints these same steps with the app's name and modules filled in (`:my_app` and `MyApp` below), then the hint that adding `{:igniter, "~> 0.8", only: [:dev]}` makes the task do them for you. By hand:
+
+1. `config/config.exs` (`pubsub` is the endpoint's `pubsub_server`; leave `mailer` out unless the app sends email through a Swoosh mailer):
+
+   ```elixir
+   config :my_app, Imison,
+     repo: MyApp.Repo,
+     pubsub: MyApp.PubSub,
+     mailer: MyApp.Mailer
+   ```
+
+2. `config/runtime.exs`, inside `if config_env() == :prod do`:
+
+   ```elixir
+   config :my_app, Imison,
+     username: System.fetch_env!("IMISON_USER"),
+     password: System.fetch_env!("IMISON_PASSWORD")
+   ```
+
+3. `config/dev.exs`, with a dev password you pick:
+
+   ```elixir
+   config :my_app, Imison, username: "admin", password: "<a password you pick>"
+   ```
+
+4. `config/test.exs`, so tests record nothing:
+
+   ```elixir
+   config :my_app, Imison, enabled: false, username: "test", password: "test"
+   ```
+
+5. `lib/my_app/application.ex`, in the children list after `MyApp.Repo` and the `Phoenix.PubSub` child:
+
+   ```elixir
+   {Imison, Application.fetch_env!(:my_app, Imison)}
+   ```
+
+6. A migration: run `mix ecto.gen.migration add_imison` and fill it in:
+
+   ```elixir
+   defmodule MyApp.Repo.Migrations.AddImison do
+     use Ecto.Migration
+
+     def up, do: Imison.Migration.up(version: 1)
+     def down, do: Imison.Migration.down(version: 1)
+   end
+   ```
+
+7. `lib/my_app_web/router.ex`: import the macro after `use MyAppWeb, :router`, then mount the dashboard:
+
+   ```elixir
+   import Imison.Web.Router
+
+   scope "/" do
+     pipe_through :browser
+
+     imison_dashboard "/errors"
+   end
+   ```
+
+8. `.formatter.exs`: add `:imison` to `import_deps`, so `imison_dashboard` needs no parentheses:
+
+   ```elixir
+   import_deps: [:imison, ...]
+   ```
+
+Then run `mix ecto.migrate`.
 
 ## Configuration
 
