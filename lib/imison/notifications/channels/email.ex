@@ -5,8 +5,10 @@ if Code.ensure_loaded?(Swoosh.Email) do
 
     Needs the `mailer` (the host's `Swoosh.Mailer` module) and `from` options;
     the recipients are the channel's stored settings
-    (`%{"recipients" => ["ops@example.com"]}`). The email is plain text: the
-    error's kind, message, location, when it was first seen and, with the
+    (`%{"recipients" => ["ops@example.com"]}`). The email is plain text,
+    headed "New error" for a new error and "Came back" (with when it came
+    back) for a resolved error that happened again, then the error's kind,
+    message, location, occurrence count, when it was first seen and, with the
     `dashboard_url` option, a link to its detail page.
 
     Compiled only when the host depends on Swoosh.
@@ -51,19 +53,29 @@ if Code.ensure_loaded?(Swoosh.Email) do
     defp subject(%Message{} = message), do: "[Imison] #{headline(message)}: #{message.kind} in #{message.location}"
 
     defp headline(%Message{trigger: :new}), do: "New error"
-    defp headline(%Message{trigger: :regression}), do: "Regression"
+    defp headline(%Message{trigger: :regression}), do: "Came back"
 
     defp text_body(%Message{} = message) do
       [
         "#{headline(message)}: #{message.kind}",
+        opening_line(message),
         "",
         "Message: #{message.message}",
         message.location && "Location: #{message.location}",
+        "Occurrences: #{message.occurrence_count}",
         "First seen: #{Format.utc_time(message.first_seen_at)}",
         message.url && "\nView it on the dashboard: #{message.url}"
       ]
       |> Enum.reject(&is_nil/1)
       |> Enum.join("\n")
     end
+
+    defp opening_line(%Message{trigger: :new}), do: nil
+
+    defp opening_line(%Message{trigger: :regression, regressed_at: nil}),
+      do: "This error was resolved and happened again."
+
+    defp opening_line(%Message{trigger: :regression, regressed_at: regressed_at}),
+      do: "This error was resolved and happened again at #{Format.utc_time(regressed_at)}."
   end
 end
