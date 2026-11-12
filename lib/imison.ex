@@ -111,7 +111,8 @@ defmodule Imison do
     [
       {Imison.Notifications.Notifier, conf: conf},
       {Imison.Capture.Worker, conf: conf},
-      {Imison.Capture.Handlers, conf: conf}
+      {Imison.Capture.Handlers, conf: conf},
+      {Imison.Pruner, conf: conf}
     ]
   end
 

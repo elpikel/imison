@@ -141,7 +141,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   Done when: `up(version: n)` applies only versions not yet applied, `down` reverses them, and a version only adds tables, columns and indexes.
   Delivered with INS-02: `Imison.Migration` tracks the applied version from version 1.
 
-- [ ] **CAP-05 Retention** · needs: ERR-01
+- [x] **CAP-05 Retention** · needs: ERR-01
   As a developer, I want old occurrences deleted after a retention period, so that the tables stay small.
   Done when: a pruner deletes occurrences older than `retention_days` (default 30) and keeps the error row; running it on several nodes is safe.
 

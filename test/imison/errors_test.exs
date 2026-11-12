@@ -523,6 +523,126 @@ defmodule Imison.ErrorsTest do
     assert log =~ "Imison failed to broadcast a status change"
   end
 
+  test "pruning deletes occurrences older than the retention days, keeps the newer ones and returns how many rows went" do
+    conf = config(retention_days: 7)
+    now = ~U[2026-11-12 12:00:00.000000Z]
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: DateTime.shift(now, day: -8)))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: DateTime.shift(now, day: -6)))
+
+    assert Errors.prune(conf, now) == %{occurrences: 1, hourly_counts: 1}
+
+    assert occurred_at_of_occurrences(error) == [DateTime.shift(now, day: -6)]
+  end
+
+  test "pruning keeps an error whose occurrences all went, with its count and first and last seen unchanged" do
+    conf = config(retention_days: 7)
+    now = ~U[2026-11-12 12:00:00.000000Z]
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: DateTime.shift(now, day: -10)))
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: DateTime.shift(now, day: -9)))
+    before_pruning = Repo.get!(Error, error.id)
+
+    Errors.prune(conf, now)
+
+    assert occurred_at_of_occurrences(error) == []
+
+    assert %Error{occurrence_count: 2, first_seen_at: first_seen_at, last_seen_at: last_seen_at} =
+             Repo.get!(Error, error.id)
+
+    assert first_seen_at == before_pruning.first_seen_at
+    assert last_seen_at == before_pruning.last_seen_at
+  end
+
+  test "pruning deletes hourly counts older than the retention days and keeps the newer ones" do
+    conf = config(retention_days: 7)
+    now = ~U[2026-11-12 12:00:00.000000Z]
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-04 09:30:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-06 15:30:00.000000Z]))
+
+    Errors.prune(conf, now)
+
+    assert hours_of_hourly_counts(error) == [~U[2026-11-06 15:00:00Z]]
+  end
+
+  test "pruning without a retention_days option keeps 30 days" do
+    conf = config()
+    now = ~U[2026-11-12 12:00:00.000000Z]
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: DateTime.shift(now, day: -31)))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: DateTime.shift(now, day: -29)))
+
+    Errors.prune(conf, now)
+
+    assert occurred_at_of_occurrences(error) == [DateTime.shift(now, day: -29)]
+    assert hours_of_hourly_counts(error) == [~U[2026-10-14 12:00:00Z]]
+  end
+
+  test "with a configured prefix old occurrences and hourly counts are pruned in that schema" do
+    PrivatePrefix.migrate_up()
+    conf = config(prefix: PrivatePrefix.name(), retention_days: 7)
+    now = ~U[2026-11-12 12:00:00.000000Z]
+    kind = "Imison.PrefixError#{System.unique_integer([:positive])}"
+    {:ok, _error} = Errors.record(conf, occurrence(kind: kind, occurred_at: DateTime.shift(now, day: -8)))
+    {:ok, _error} = Errors.record(conf, occurrence(kind: kind, occurred_at: DateTime.shift(now, day: -6)))
+
+    assert Errors.prune(conf, now) == %{occurrences: 1, hourly_counts: 1}
+
+    assert [%Occurrence{}] = Repo.all(Occurrence, prefix: PrivatePrefix.name())
+    assert [%HourlyCount{}] = Repo.all(HourlyCount, prefix: PrivatePrefix.name())
+  end
+
+  test "processes on their own connections pruning at once both finish and leave the same rows as one prune" do
+    conf = config(retention_days: 7)
+    now = DateTime.utc_now()
+    kind = "Imison.PrunedError#{System.unique_integer([:positive])}"
+    old_occurrences = 30
+    pruners = 2
+
+    on_exit(fn ->
+      Sandbox.unboxed_run(Repo, fn ->
+        Error |> from(as: :error) |> where([error: error], error.kind == ^kind) |> Repo.delete_all()
+      end)
+    end)
+
+    error =
+      Sandbox.unboxed_run(Repo, fn ->
+        for days_ago <- 8..(7 + old_occurrences) do
+          Errors.record(conf, occurrence(kind: kind, occurred_at: DateTime.shift(now, day: -days_ago)))
+        end
+
+        {:ok, error} = Errors.record(conf, occurrence(kind: kind, occurred_at: DateTime.shift(now, day: -1)))
+        error
+      end)
+
+    results =
+      1..pruners
+      |> Task.async_stream(fn _pruner -> Sandbox.unboxed_run(Repo, fn -> Errors.prune(conf, now) end) end,
+        max_concurrency: pruners
+      )
+      |> Enum.to_list()
+
+    assert [{:ok, %{occurrences: _first}}, {:ok, %{occurrences: _second}}] = results
+
+    assert Sandbox.unboxed_run(Repo, fn -> occurred_at_of_occurrences(error) end) == [DateTime.shift(now, day: -1)]
+    assert Sandbox.unboxed_run(Repo, fn -> length(hours_of_hourly_counts(error)) end) == 1
+  end
+
+  defp occurred_at_of_occurrences(%Error{id: error_id}) do
+    Occurrence
+    |> from(as: :occurrence)
+    |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
+    |> order_by([occurrence: occurrence], occurrence.occurred_at)
+    |> select([occurrence: occurrence], occurrence.occurred_at)
+    |> Repo.all()
+  end
+
+  defp hours_of_hourly_counts(%Error{id: error_id}) do
+    HourlyCount
+    |> from(as: :hourly_count)
+    |> where([hourly_count: hourly_count], hourly_count.error_id == ^error_id)
+    |> order_by([hourly_count: hourly_count], hourly_count.hour)
+    |> select([hourly_count: hourly_count], hourly_count.hour)
+    |> Repo.all()
+  end
+
   defp set_updated_at(%Error{id: error_id}, updated_at) do
     Error
     |> from(as: :error)

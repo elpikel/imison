@@ -25,6 +25,7 @@ defmodule Imison.Errors do
   @heat_strip_hours 24
   @largest_id 9_223_372_036_854_775_807
   @status_broadcast_failure "Imison failed to broadcast a status change"
+  @prune_batch_size 10_000
 
   @spec list(Config.t(), status: atom(), search: String.t()) :: [Error.t()]
   def list(%Config{repo: repo, prefix: prefix}, opts) do
@@ -127,6 +128,16 @@ defmodule Imison.Errors do
     end
   end
 
+  @spec prune(Config.t(), DateTime.t()) :: %{occurrences: non_neg_integer(), hourly_counts: non_neg_integer()}
+  def prune(%Config{retention_days: retention_days} = conf, now) do
+    cutoff = DateTime.shift(now, day: -retention_days)
+
+    %{
+      occurrences: delete_in_batches(conf, %{schema: Occurrence, timestamp: :occurred_at, cutoff: cutoff}, 0),
+      hourly_counts: delete_in_batches(conf, %{schema: HourlyCount, timestamp: :hour, cutoff: cutoff}, 0)
+    }
+  end
+
   defp error_id(id) when is_integer(id) and id in 1..@largest_id//1, do: id
 
   defp error_id(id) when is_binary(id) do
@@ -164,6 +175,28 @@ defmodule Imison.Errors do
   catch
     kind, reason ->
       FailureLog.error(@status_broadcast_failure, %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
+  end
+
+  defp delete_in_batches(%Config{repo: repo, prefix: prefix} = conf, old_rows, deleted_so_far) do
+    %{schema: schema, timestamp: timestamp, cutoff: cutoff} = old_rows
+
+    batch_ids =
+      schema
+      |> from(as: :old_row)
+      |> where([old_row: old_row], field(old_row, ^timestamp) < ^cutoff)
+      |> select([old_row: old_row], old_row.id)
+      |> limit(@prune_batch_size)
+      |> lock("FOR UPDATE SKIP LOCKED")
+
+    {deleted, _rows} =
+      schema
+      |> from(as: :old_row)
+      |> where([old_row: old_row], old_row.id in subquery(batch_ids))
+      |> repo.delete_all(prefix: prefix)
+
+    if deleted < @prune_batch_size,
+      do: deleted_so_far + deleted,
+      else: delete_in_batches(conf, old_rows, deleted_so_far + deleted)
   end
 
   defp counts_oldest_first(hourly_counts, first_hour) do
