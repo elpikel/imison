@@ -9,7 +9,9 @@ defmodule Imison.MixProject do
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
-      aliases: aliases()
+      aliases: aliases(),
+      name: "Imison",
+      docs: docs()
     ]
   end
 
@@ -27,6 +29,28 @@ defmodule Imison.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
+
+  defp docs do
+    [
+      main: "readme",
+      extras: [
+        "README.md",
+        "guides/getting-started.md",
+        "guides/dashboard.md",
+        "guides/capturing-errors.md",
+        "guides/notifications.md",
+        "guides/custom-channels.md",
+        "guides/configuration.md"
+      ],
+      groups_for_extras: [Guides: ~r"guides/"],
+      # The guides show images/<file> and the README guides/images/<file>, the paths GitHub resolves.
+      assets: %{"guides/images" => "images", "guides/images/" => "guides/images"},
+      groups_for_modules: [
+        Notifications: [~r"Imison.Notifications"],
+        Dashboard: [~r"Imison.Web"]
+      ]
+    ]
+  end
 
   defp aliases do
     [
@@ -47,6 +71,7 @@ defmodule Imison.MixProject do
       {:bandit, "~> 1.14", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ecto_sql, "~> 3.14"},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:ex_slop, "~> 0.4.5", only: [:dev, :test], runtime: false},
       {:igniter, "~> 0.8", optional: true},
       {:lazy_html, ">= 0.1.0", only: :test},
