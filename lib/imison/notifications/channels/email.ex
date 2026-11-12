@@ -6,12 +6,13 @@ if Code.ensure_loaded?(Swoosh.Email) do
     Needs the `mailer` (the host's `Swoosh.Mailer` module) and `from` options;
     the recipients are the channel's stored settings
     (`%{"recipients" => ["ops@example.com"]}`). The email is plain text,
-    headed "New error" for a new error and "Came back" (with when it came
-    back) for a resolved error that happened again, then the error's kind,
-    message, location, occurrence count, when it was first seen and, with the
-    `dashboard_url` option, a link to its detail page. The test message sent
-    from the notifications screen is "[Imison] Test email", saying that
-    delivery works.
+    headed "New error" for a new error, "Came back" (with when it came back)
+    for a resolved error that happened again and "Still happening" (with when
+    it was last seen) for the hourly reminder about an unresolved error that
+    keeps happening, then the error's kind, message, location, occurrence
+    count, when it was first seen and, with the `dashboard_url` option, a link
+    to its detail page. The test message sent from the notifications screen is
+    "[Imison] Test email", saying that delivery works.
 
     Each recipient must look like an email address (`local@domain`); the
     domain isn't looked up.
@@ -65,6 +66,7 @@ if Code.ensure_loaded?(Swoosh.Email) do
 
     defp headline(%Message{trigger: :new}), do: "New error"
     defp headline(%Message{trigger: :regression}), do: "Came back"
+    defp headline(%Message{trigger: :still_happening}), do: "Still happening"
 
     defp text_body(%Message{trigger: :test}) do
       """
@@ -96,5 +98,8 @@ if Code.ensure_loaded?(Swoosh.Email) do
 
     defp opening_line(%Message{trigger: :regression, regressed_at: regressed_at}),
       do: "This error was resolved and happened again at #{Format.utc_time(regressed_at)}."
+
+    defp opening_line(%Message{trigger: :still_happening, last_seen_at: last_seen_at}),
+      do: "This error keeps happening; it was last seen at #{Format.utc_time(last_seen_at)}."
   end
 end

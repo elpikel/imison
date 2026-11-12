@@ -53,7 +53,7 @@ defmodule Imison.Web.NotificationsLiveTest do
     assert has_element?(view, ".nav .nav__link[aria-current=page]", "Errors")
   end
 
-  test "the screen shows the email channel's stored recipients, the mailer and sender, and the two rules" do
+  test "the screen shows the email channel's stored recipients, the mailer and sender, and the three rules" do
     start_mailing_imison()
     put_email_channel(["ops@example.com", "kasia@example.com"])
 
@@ -64,7 +64,22 @@ defmodule Imison.Web.NotificationsLiveTest do
     assert has_element?(view, ".channel .rule__hint", "Sends with Imison.Test.Mailer as errors@example.com")
     assert has_element?(view, ".rule input[type=checkbox][checked][aria-label='A new error appears']")
     assert has_element?(view, ".rule input[type=checkbox][checked][aria-label='A resolved error comes back']")
-    assert rule_count(view) == 2
+    assert has_element?(view, ".rule input[type=checkbox][aria-label='An error keeps happening']")
+    refute has_element?(view, ".rule input[type=checkbox][checked][aria-label='An error keeps happening']")
+    assert has_element?(view, ".rule .rule__hint", "At most one reminder per error per hour.")
+    assert rule_count(view) == 3
+  end
+
+  test "turning on An error keeps happening and saving stores the still happening rule enabled" do
+    start_mailing_imison()
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    view
+    |> form("#email-settings", %{"recipients" => "ops@example.com", "rules" => %{"still_happening" => "true"}})
+    |> render_submit()
+
+    assert stored_rule(:still_happening).enabled
+    assert has_element?(view, ".rule input[type=checkbox][checked][aria-label='An error keeps happening']")
   end
 
   test "a rule stored as disabled shows its switch off" do

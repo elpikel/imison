@@ -157,7 +157,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want the dashboard to stay current when my nodes are not clustered, so that live updates do not depend on distributed Erlang.
   Done when: without `pubsub`, or without connected nodes, an open list refreshes from the database every few seconds.
 
-- [ ] **NOT-04 Throttle repeat notifications** · needs: MN-02
+- [x] **NOT-04 Throttle repeat notifications** · needs: MN-02
   As a developer, I want repeat notifications for the same error throttled, so that an outage does not send hundreds of emails.
   Done when: "still happening" notifications for one error are sent at most once per period, recorded in `imison_deliveries`.
 

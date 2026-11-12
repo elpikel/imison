@@ -92,19 +92,176 @@ defmodule Imison.NotificationsTest do
     refute body =~ "http"
   end
 
-  test "another occurrence of an existing error sends no email" do
+  test "another occurrence of an existing error sends and records nothing without a stored still happening rule" do
     set_swoosh_global()
     name = start_mailing_imison()
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
     put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
-    event = new_error_event()
-    Capture.capture(name, event)
-    wait_for_worker(name)
-    assert_email_sent()
 
-    Capture.capture(name, %{event | occurred_at: DateTime.utc_now()})
+    Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 10:15:00.000000Z]})
 
     wait_for_worker(name)
     refute_email_sent()
+    assert deliveries(error.id) == []
+  end
+
+  test "an unresolved error that happens 50 times within one hour sends one still happening reminder" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+
+    for minute <- 1..50 do
+      Capture.capture(name, %{error.event | occurred_at: DateTime.shift(~U[2026-11-12 10:00:00.000000Z], minute: minute)})
+    end
+
+    wait_for_worker(name)
+    assert_email_sent(to: [{"", "ops@example.com"}])
+    refute_email_sent()
+    assert [%Delivery{trigger: :still_happening}] = deliveries(error.id)
+  end
+
+  test "an unresolved error that happens 50 times within one hour tries to claim its reminder once" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+    handler_id = "imison-notifications-test-#{System.unique_integer([:positive])}"
+    :ok = :telemetry.attach(handler_id, [:imison, :test, :repo, :query], &__MODULE__.report_delivery_insert/4, self())
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    for minute <- 1..50 do
+      Capture.capture(name, %{error.event | occurred_at: DateTime.shift(~U[2026-11-12 10:00:00.000000Z], minute: minute)})
+    end
+
+    wait_for_worker(name)
+    assert_received :delivery_insert
+    refute_received :delivery_insert
+  end
+
+  test "an error still happening in the next hour sends another reminder" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+    Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 10:15:00.000000Z]})
+    wait_for_worker(name)
+    assert_email_sent()
+
+    Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 11:05:00.000000Z]})
+
+    wait_for_worker(name)
+    assert_email_sent()
+
+    assert error.id |> deliveries() |> Enum.map(& &1.period) |> Enum.sort(DateTime) == [
+             ~U[2026-11-12 10:00:00Z],
+             ~U[2026-11-12 11:00:00Z]
+           ]
+  end
+
+  test "a sent reminder is recorded with its channel, error, the still happening trigger, the hour as its period and sent" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
+    channel = put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+
+    Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 10:15:00.000000Z]})
+
+    wait_for_worker(name)
+    channel_id = channel.id
+    error_id = error.id
+
+    assert [
+             %Delivery{
+               channel_id: ^channel_id,
+               error_id: ^error_id,
+               trigger: :still_happening,
+               period: ~U[2026-11-12 10:00:00Z],
+               status: :sent,
+               sent_at: %DateTime{}
+             }
+           ] = deliveries(error.id)
+  end
+
+  test "a reminder the mailer fails to send is recorded as failed for its hour" do
+    name = start_mailing_imison(mailer: FailingMailer)
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+
+    with_log(fn ->
+      Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 10:15:00.000000Z]})
+      wait_for_worker(name)
+    end)
+
+    assert [%Delivery{trigger: :still_happening, period: ~U[2026-11-12 10:00:00Z], status: :failed, sent_at: %DateTime{}}] =
+             deliveries(error.id)
+  end
+
+  test "an ignored error that happens again sends no reminder" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :ignored)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    refute_email_sent()
+    assert deliveries(error.id) == []
+  end
+
+  test "the occurrence that creates an error sends only the new error notification" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+
+    message = capture_new_error(name)
+
+    wait_for_worker(name)
+    assert_email_sent()
+    refute_email_sent()
+    assert [%Delivery{trigger: :new}] = deliveries(recorded_error(message).id)
+  end
+
+  test "the occurrence that reopens a resolved error sends only the regression notification" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :resolved)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    assert_email_sent()
+    refute_email_sent()
+    assert [%Delivery{trigger: :regression}] = deliveries(error.id)
+  end
+
+  test "the reminder email is headed Still happening with the occurrence count and a link to the error" do
+    set_swoosh_global()
+    name = start_mailing_imison(dashboard_url: "https://app.example.com/errors")
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
+    Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 09:45:00.000000Z]})
+    wait_for_worker(name)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :still_happening, true)
+
+    Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 10:15:00.000000Z]})
+
+    wait_for_worker(name)
+    still_happening = Repo.get!(Error, error.id)
+    assert_received {:email, %Swoosh.Email{subject: subject, text_body: body}}
+    assert subject == "[Imison] Still happening: #{still_happening.kind} in #{still_happening.location}"
+    assert body =~ "Occurrences: 3"
+    assert body =~ "https://app.example.com/errors/errors/#{error.id}"
   end
 
   test "a new error sends no email when the new rule is stored as disabled" do
@@ -347,6 +504,19 @@ defmodule Imison.NotificationsTest do
     assert subject == "[Imison] New error: #{error.kind} in #{error.location}"
     assert body =~ "New error: #{error.kind}"
     refute body =~ "happened again"
+  end
+
+  def report_delivery_insert(_event, _measurements, %{source: "imison_deliveries", query: "INSERT" <> _rest}, test_pid),
+    do: send(test_pid, :delivery_insert)
+
+  def report_delivery_insert(_event, _measurements, _metadata, _test_pid), do: :ok
+
+  defp capture_existing_error(name, occurred_at) do
+    event = %{new_error_event() | occurred_at: occurred_at}
+    Capture.capture(name, event)
+    wait_for_worker(name)
+    %Error{id: error_id} = recorded_error(event.message)
+    %{id: error_id, event: event}
   end
 
   defp capture_and_set_status(name, status) do
