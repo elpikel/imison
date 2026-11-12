@@ -6,6 +6,19 @@ defmodule Imison.ConfigTest do
 
   defmodule Channel do
     @moduledoc false
+
+    @behaviour Imison.Notifications.Channel
+
+    alias Imison.Notifications.Channel
+
+    @impl Channel
+    def type, do: "pager"
+
+    @impl Channel
+    def validate_config(_config), do: :ok
+
+    @impl Channel
+    def deliver(_message, _channel_config, _conf), do: :ok
   end
 
   defmodule Mailer do
@@ -26,8 +39,9 @@ defmodule Imison.ConfigTest do
              mailer: nil,
              from: nil,
              release: nil,
+             dashboard_url: nil,
              retention_days: 30,
-             channels: [],
+             channels: [Imison.Notifications.Channels.Email],
              enabled: true,
              filter: ["password", "token", "secret", "authorization", "cookie"],
              ignore: [],
@@ -46,6 +60,7 @@ defmodule Imison.ConfigTest do
         mailer: Mailer,
         from: "errors@example.com",
         release: "1.2.3",
+        dashboard_url: "https://app.example.com/errors",
         retention_days: 7,
         channels: [Channel],
         enabled: false,
@@ -60,6 +75,7 @@ defmodule Imison.ConfigTest do
              mailer: Mailer,
              from: "errors@example.com",
              release: "1.2.3",
+             dashboard_url: "https://app.example.com/errors",
              retention_days: 7,
              channels: [Channel],
              enabled: false,
@@ -145,6 +161,18 @@ defmodule Imison.ConfigTest do
   test "a from address that isn't a string is refused naming :from" do
     assert_raise ArgumentError, ~r/expected :from to be one of/, fn ->
       Config.new(repo: Repo, username: "admin", password: "secret", from: false)
+    end
+  end
+
+  test "a channels entry that doesn't implement the Channel behaviour is refused naming :channels" do
+    assert_raise ArgumentError, ~r/expected :channels to be a list of/, fn ->
+      Config.new(repo: Repo, username: "admin", password: "secret", channels: [Mailer])
+    end
+  end
+
+  test "a dashboard_url that isn't a string is refused naming :dashboard_url" do
+    assert_raise ArgumentError, ~r/expected :dashboard_url to be one of/, fn ->
+      Config.new(repo: Repo, username: "admin", password: "secret", dashboard_url: :errors)
     end
   end
 

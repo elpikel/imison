@@ -211,7 +211,7 @@ defmodule Imison.Errors do
         returning: true
       )
 
-    %{error | reopened: reopened_by_this_call?(error)}
+    %{error | created: created_by_this_call?(error), reopened: reopened_by_this_call?(error)}
   end
 
   defp newest_occurrence_wins_and_resolved_regresses(now) do
@@ -259,6 +259,9 @@ defmodule Imison.Errors do
       fragment("GREATEST(?, ? + interval '1 microsecond')", type(^now, error.updated_at), error.updated_at)
     )
   end
+
+  defp created_by_this_call?(%Error{inserted_at: inserted_at, updated_at: updated_at}),
+    do: DateTime.compare(inserted_at, updated_at) == :eq
 
   defp reopened_by_this_call?(%Error{regressed_at: nil}), do: false
 

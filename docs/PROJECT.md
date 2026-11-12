@@ -181,16 +181,16 @@ Each channel is a module that implements one behaviour, so adding Slack or a web
 defmodule Imison.Notifications.Channel do
   @callback type() :: String.t()
   @callback validate_config(map()) :: :ok | {:error, keyword()}
-  @callback deliver(Imison.Notifications.Message.t(), config :: map()) ::
+  @callback deliver(Imison.Notifications.Message.t(), channel_config :: map(), Imison.Config.t()) ::
               :ok | {:error, term()}
 end
 
-# config/config.exs, optional: the default list holds only Email
+# config/config.exs, optional: the default list holds only Email (none without Swoosh)
 config :my_app, Imison,
   channels: [Imison.Notifications.Channels.Email, MyApp.SlackChannel]
 ```
 
-`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. Because the list is plain config, a host app can add its own channel module without a new Imison release.
+`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release.
 
 ## Configuration
 
@@ -204,8 +204,9 @@ Options live under the host app's config key, as with Oban. Only the login comes
 | `mailer` | For email | The host's Swoosh mailer module |
 | `from` | For email | Sender address |
 | `release` | No | Version label stored with each occurrence |
+| `dashboard_url` | No | Absolute URL where `imison_dashboard` is mounted, e.g. `https://app.example.com/errors`; notifications link to the error's page under it, and carry no link without it |
 | `retention_days` | No | Days to keep occurrences, default 30 |
-| `channels` | No | Notification channel modules, default email only |
+| `channels` | No | Notification channel modules implementing `Imison.Notifications.Channel`, default email only (none when Swoosh is absent) |
 | `enabled` | No | `false` turns capture off, for the test environment |
 | `filter` | No | Keys replaced with `[FILTERED]` in params, headers and metadata before storage; defaults to `password`, `token`, `secret`, `authorization` and `cookie` |
 | `ignore` | No | Exception modules that are never recorded, default none |

@@ -108,7 +108,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
 
 ### Notifications
 
-- [ ] **NOT-01 Email on a new error** · needs: ERR-01, INS-05
+- [x] **NOT-01 Email on a new error** · needs: ERR-01, INS-05
   As a developer, I want an email through my app's existing mailer when a new error appears, so that I hear about it without watching the dashboard.
   Done when: a new error sends one email through the host's Swoosh mailer from `from` to the configured recipients, with a link to the error; the email channel compiles only when Swoosh is present; the `Channel` behaviour exists.
 

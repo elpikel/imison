@@ -18,6 +18,7 @@ defmodule Imison.Config do
           mailer: module() | nil,
           from: String.t() | nil,
           release: String.t() | nil,
+          dashboard_url: String.t() | nil,
           retention_days: pos_integer(),
           channels: [module()],
           enabled: boolean(),
@@ -27,6 +28,7 @@ defmodule Imison.Config do
         }
 
   @required_options [:repo, :username, :password]
+  @default_channels if Code.ensure_loaded?(Swoosh.Email), do: [Imison.Notifications.Channels.Email], else: []
 
   @derive {Inspect, except: [:password]}
   @enforce_keys @required_options
@@ -38,8 +40,9 @@ defmodule Imison.Config do
             mailer: nil,
             from: nil,
             release: nil,
+            dashboard_url: nil,
             retention_days: 30,
-            channels: [],
+            channels: @default_channels,
             enabled: true,
             filter: ~w(password token secret authorization cookie),
             ignore: [],
@@ -73,8 +76,9 @@ defmodule Imison.Config do
              mailer: {:or, [nil, {:module, [deliver: 2]}]},
              from: {:or, [nil, :string]},
              release: {:or, [nil, :string]},
+             dashboard_url: {:or, [nil, :string]},
              retention_days: :pos_integer,
-             channels: {:list, {:module, []}},
+             channels: {:list, {:module, [type: 0, validate_config: 1, deliver: 3]}},
              enabled: :boolean,
              filter: {:list, :string},
              ignore: {:list, {:module, [exception: 1]}},

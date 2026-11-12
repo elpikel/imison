@@ -67,11 +67,11 @@ _Avoid_: TTL, expiry
 ### Notifications
 
 **Channel**:
-A configured way of delivering notifications (email first), implemented by a module with the `Imison.Notifications.Channel` behaviour.
+A configured way of delivering notifications (email first), implemented by a module with the `Imison.Notifications.Channel` behaviour and listed in the `channels` option; its settings (e.g. the email recipients) are stored once per channel type.
 _Avoid_: integration, provider, notifier
 
 **Rule**:
-Whether a trigger notifies.
+Whether a trigger notifies; a trigger without a stored rule notifies for `new` and `regression` only.
 _Avoid_: alert, policy
 
 **Trigger**:
@@ -83,7 +83,7 @@ The channel-neutral content of one notification: trigger, kind, message, locatio
 _Avoid_: alert, payload
 
 **Delivery**:
-A record of one notification sent through one channel, used for throttling and debugging.
+A record of one notification sent, or failed, through one channel, used for throttling and debugging.
 _Avoid_: notification log, send
 
 **Digest**:
