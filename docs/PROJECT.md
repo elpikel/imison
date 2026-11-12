@@ -31,7 +31,8 @@ flowchart LR
   dash --> repo
   pruner --> repo
   notifier --> email[Email channel] --> mailer
-  notifier -.-> more[Slack, webhook, custom channels]
+  notifier --> webhook[Webhook channel] --> endpoint[HTTP endpoint]
+  notifier -.-> more[Slack, custom channels]
 ```
 
 ## Stack
@@ -61,7 +62,7 @@ lib/imison/migration.ex          versioned up/down
 lib/imison/capture/              logger handler, telemetry handlers, worker
 lib/imison/errors/               schemas, fingerprint, upsert
 lib/imison/pruner.ex             pruner process (retention)
-lib/imison/notifications/        notifier, daily digest process, Channel behaviour, Email channel
+lib/imison/notifications/        notifier, daily digest process, Channel behaviour, Email and Webhook channels, HTTP (httpc)
 lib/imison/web/router.ex         imison_dashboard macro
 lib/imison/web/live/             error list, error detail, notifications, login
 lib/mix/tasks/imison.install.ex  Igniter installer
@@ -77,6 +78,8 @@ dev/                              small Phoenix host app for development, not pu
 | `swoosh` | Optional | The email channel compiles only when the host has it |
 | `oban` | Optional | The job-failure hook attaches only when the host has it |
 | `igniter` | Optional | `mix imison.install`; without it the task prints the manual steps |
+| `:inets`, `:ssl`, `:public_key` (OTP) | Required (`extra_applications`) | The webhook channel's HTTPS POSTs through `:httpc`; no HTTP client dependency |
+| `bandit` | Test only | A local HTTP server the webhook tests post to |
 
 The CSS and fonts are committed under `priv/static`; the script is assembled at compile time from the `phoenix` and `phoenix_live_view` packages' own minified JavaScript plus `priv/static/imison.js`, which connects the LiveSocket. Imison's own routes serve all of them under the dashboard's path, so the host's asset pipeline is never involved and there is no JS build step.
 
@@ -213,7 +216,7 @@ config :my_app, Imison,
   channels: [Imison.Notifications.Channels.Email, MyApp.SlackChannel]
 ```
 
-`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The daily digest (`trigger: :digest`) is about no single error, so its error fields are `nil` and its `summary` holds the UTC `date`, `url` (the dashboard's error list, absent without `dashboard_url`) and three sections, `new`, `came_back` and `most_frequent`, each `%{lines: [...], total: n}`: at most 20 lines (5 for `most_frequent`), and `total` counting every error in the section that day so a channel can say how many it left out; each line has the error's id, kind, message, location, that day's occurrence `count` and `url`. `summary` is `nil` for every other message. Every channel receives digests and must render or skip them. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release. The Notifications screen shows one panel per listed module, built from the optional callbacks: titled by `label/0` (else the type), `describe/1` under the title, a field per `config_fields/0` entry (`hint` optional), an on/off switch, Save and "Send test" for that channel alone; the rules are one global block for every channel that's on. Field values are stored in the channel's `config` under their names; `:secret` values are never shown back, and blank keeps the stored one.
+`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The daily digest (`trigger: :digest`) is about no single error, so its error fields are `nil` and its `summary` holds the UTC `date`, `url` (the dashboard's error list, absent without `dashboard_url`) and three sections, `new`, `came_back` and `most_frequent`, each `%{lines: [...], total: n}`: at most 20 lines (5 for `most_frequent`), and `total` counting every error in the section that day so a channel can say how many it left out; each line has the error's id, kind, message, location, that day's occurrence `count` and `url`. `summary` is `nil` for every other message. Every channel receives digests and must render or skip them. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release. The Notifications screen shows one panel per listed module, built from the optional callbacks: titled by `label/0` (else the type), `describe/1` under the title, a field per `config_fields/0` entry (`hint` optional), an on/off switch, Save and "Send test" for that channel alone; the rules are one global block for every channel that's on. Field values are stored in the channel's `config` under their names; `:secret` values are never shown back, blank keeps the stored one and a "Remove" box next to a set secret clears it. `Imison.Notifications.Channels.Webhook` (type `webhook`, opt-in in `channels`) POSTs the message as JSON (built-in `JSON`, times in ISO 8601) to an http(s) `url`, signed when a `secret` is set (`x-imison-timestamp`, `x-imison-signature: sha256=<hex HMAC-SHA256 of "<timestamp>.<body>">`), through an internal `:httpc` wrapper with TLS peer and hostname verification, 5 s to connect and 5 s for the answer, and no redirects; a non-2xx answer is `{:error, {:http_status, status}}`.
 
 ## Configuration
 

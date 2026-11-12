@@ -13,7 +13,8 @@ defmodule Imison.Web.NotificationsLive do
   message through that channel alone with the form's values, saved or not,
   and names the channel in the flash. A secret field is never rendered back:
   it says a value is set, and leaving it blank keeps the stored value, on
-  save and on test. Recipients are separated by commas or new lines.
+  save and on test; ticking its Remove box clears the stored value instead
+  (a new value typed in wins). Recipients are separated by commas or new lines.
 
   Without any channel in the `channels` option (the host doesn't depend on
   Swoosh) the screen says how to enable email instead.
@@ -55,7 +56,7 @@ defmodule Imison.Web.NotificationsLive do
   def handle_event("save_channel", %{"channel" => type} = params, %{assigns: %{conf: conf}} = socket) do
     socket = update_panel(socket, type, &put_draft(&1, params))
     panel = find_panel(socket, type)
-    settings = %{enabled: panel.enabled, config: submitted_config(panel)}
+    settings = Map.put(submission(panel), :enabled, panel.enabled)
 
     case Notifications.put_channel_settings(conf, panel.module, settings) do
       {:ok, %ChannelSetting{} = setting} ->
@@ -72,7 +73,7 @@ defmodule Imison.Web.NotificationsLive do
   def handle_event("send_test", %{"channel" => type}, %{assigns: %{conf: conf}} = socket) do
     panel = find_panel(socket, type)
 
-    case Notifications.send_test(conf, panel.module, submitted_config(panel)) do
+    case Notifications.send_test(conf, panel.module, submission(panel)) do
       :ok ->
         {:noreply,
          socket
@@ -183,6 +184,7 @@ defmodule Imison.Web.NotificationsLive do
         value: Map.get(panel.values, field.name, ""),
         errors: errors,
         secret_set: secret_set,
+        removed: field.name in panel.removed_secrets,
         hint: hint,
         described_by: described_by(id, %{secret_set: secret_set, hint: hint, errors: errors})
       )
@@ -219,6 +221,17 @@ defmodule Imison.Web.NotificationsLive do
         aria-describedby={@described_by}
       />
       <span :if={@secret_set} class="field__hint" id={"#{@id}-set"}>Set — leave blank to keep.</span>
+      <label :if={@secret_set} class="field__hint">
+        <input type="hidden" name={"remove[#{@field.name}]"} value="false" />
+        <input
+          class="checkbox"
+          type="checkbox"
+          name={"remove[#{@field.name}]"}
+          value="true"
+          checked={@removed}
+          aria-label={"Remove the stored #{@field.label}"}
+        /> Remove
+      </label>
       <span :if={@hint} class="field__hint" id={"#{@id}-hint"}>{@hint}</span>
       <ul :if={@errors != []} id={"#{@id}-errors"} class="field__error">
         <li :for={field_error <- @errors}>{field_error}</li>
@@ -359,6 +372,7 @@ defmodule Imison.Web.NotificationsLive do
       enabled: enabled,
       values: Map.new(panel.fields, &{&1.name, shown_value(&1, Map.get(stored_config, &1.name))}),
       secrets_set: for(%{type: :secret, name: name} <- panel.fields, present?(stored_config[name]), do: name),
+      removed_secrets: [],
       errors: []
     })
   end
@@ -377,9 +391,20 @@ defmodule Imison.Web.NotificationsLive do
     %{
       panel
       | enabled: switch_param(params, panel.enabled),
-        values: Map.new(panel.values, fn {name, value} -> {name, text_param(submitted_values, name, value)} end)
+        values: Map.new(panel.values, fn {name, value} -> {name, text_param(submitted_values, name, value)} end),
+        removed_secrets: removed_secrets_param(params, panel)
     }
   end
+
+  defp removed_secrets_param(%{"remove" => %{} = boxes}, %{secrets_set: secrets_set, removed_secrets: removed_secrets}) do
+    for name <- secrets_set, removal_ticked?(Map.get(boxes, name), name in removed_secrets), do: name
+  end
+
+  defp removed_secrets_param(_params, %{removed_secrets: removed_secrets}), do: removed_secrets
+
+  defp removal_ticked?("true", _ticked), do: true
+  defp removal_ticked?("false", _ticked), do: false
+  defp removal_ticked?(_missing, ticked), do: ticked
 
   defp switch_param(%{"enabled" => "true"}, _enabled), do: true
   defp switch_param(%{"enabled" => "false"}, _enabled), do: false
@@ -393,6 +418,8 @@ defmodule Imison.Web.NotificationsLive do
   end
 
   defp text_param(_submitted_values, _name, value), do: value
+
+  defp submission(panel), do: %{config: submitted_config(panel), removed_secrets: panel.removed_secrets}
 
   defp submitted_config(%{fields: fields, values: values}) do
     Map.new(fields, &{&1.name, submitted_value(&1, Map.get(values, &1.name, ""))})
