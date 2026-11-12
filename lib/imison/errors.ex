@@ -32,7 +32,7 @@ defmodule Imison.Errors do
   @listed_errors_limit 100
   @heat_strip_hours 24
   @largest_id 9_223_372_036_854_775_807
-  @status_broadcast_failure "Imison failed to broadcast a status change"
+  @change_broadcast_failure "Imison failed to broadcast a change to errors"
   @prune_batch_size 10_000
   @nearest_first %{older: :desc, newer: :asc}
 
@@ -140,9 +140,12 @@ defmodule Imison.Errors do
   def set_status(%Config{} = conf, ids, status) do
     case known_status(status) do
       nil -> {:error, :invalid_status}
-      known_status -> {:ok, store_status(conf, ids, known_status)}
+      known_status -> {:ok, update_errors(conf, ids, status: known_status)}
     end
   end
+
+  @spec set_muted(Config.t(), [integer() | String.t()], boolean()) :: {:ok, non_neg_integer()}
+  def set_muted(%Config{} = conf, ids, muted) when is_boolean(muted), do: {:ok, update_errors(conf, ids, muted: muted)}
 
   @spec prune(Config.t(), DateTime.t()) :: %{occurrences: non_neg_integer(), hourly_counts: non_neg_integer()}
   def prune(%Config{retention_days: retention_days} = conf, now) do
@@ -238,28 +241,28 @@ defmodule Imison.Errors do
   defp known_status(status) when is_binary(status), do: Enum.find(Error.statuses(), &(Atom.to_string(&1) == status))
   defp known_status(_status), do: nil
 
-  defp store_status(%Config{repo: repo, prefix: prefix} = conf, ids, status) do
+  defp update_errors(%Config{repo: repo, prefix: prefix} = conf, ids, changes) do
     error_ids = ids |> Enum.map(&database_id/1) |> Enum.reject(&is_nil/1)
 
     {count, changed_ids} =
       Error
       |> from(as: :error)
       |> where([error: error], error.id in ^error_ids)
-      |> update(^[set: [status: status, updated_at: updated_at_moved_forward(DateTime.utc_now())]])
+      |> update(^[set: [{:updated_at, updated_at_moved_forward(DateTime.utc_now())} | changes]])
       |> select([error: error], error.id)
       |> repo.update_all([], prefix: prefix)
 
-    if changed_ids != [], do: broadcast_status_changed(conf, changed_ids)
+    if changed_ids != [], do: broadcast_changed(conf, changed_ids)
     count
   end
 
-  defp broadcast_status_changed(conf, error_ids) do
-    with {:error, reason} <- Broadcast.status_changed(conf, error_ids) do
-      FailureLog.error(@status_broadcast_failure, %{kind: :error, reason: reason, stacktrace: []})
+  defp broadcast_changed(conf, error_ids) do
+    with {:error, reason} <- Broadcast.changed(conf, error_ids) do
+      FailureLog.error(@change_broadcast_failure, %{kind: :error, reason: reason, stacktrace: []})
     end
   catch
     kind, reason ->
-      FailureLog.error(@status_broadcast_failure, %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
+      FailureLog.error(@change_broadcast_failure, %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
   end
 
   defp delete_in_batches(%Config{repo: repo, prefix: prefix} = conf, old_rows, deleted_so_far) do

@@ -32,6 +32,7 @@ defmodule Imison.Notifications.Notifier do
   end
 
   @spec triggers(Error.t()) :: [Rule.trigger()]
+  def triggers(%Error{muted: true}), do: []
   def triggers(%Error{created: true}), do: [:new]
   def triggers(%Error{reopened: true}), do: [:regression]
   def triggers(%Error{status: :unresolved}), do: [:still_happening]

@@ -7,11 +7,11 @@ defmodule Imison.Web.ErrorsLive do
 
   With the instance's `pubsub` set, the connected list subscribes to the
   errors it records and reloads the page and counts at most once a second,
-  showing the design's Live indicator. Status changes made elsewhere reload it
-  the same way. Broadcasts only reach lists on nodes that share the PubSub, so
-  without `pubsub`, or while this node has no connected nodes, the connected
-  list also refreshes from the database every few seconds, and the indicator
-  says so.
+  showing the design's Live indicator. Status changes and mutes made
+  elsewhere reload it the same way. Broadcasts only reach lists on nodes that
+  share the PubSub, so without `pubsub`, or while this node has no connected
+  nodes, the connected list also refreshes from the database every few
+  seconds, and the indicator says so.
 
   Rows can be selected, one by one or all at once; while some are, the bulk
   bar offers the status changes that move them off the current tab. The
@@ -30,7 +30,7 @@ defmodule Imison.Web.ErrorsLive do
 
   @live_reload_interval_ms 1_000
   @refresh_interval_ms 5_000
-  @live_reload_events [:recorded, :status_changed]
+  @live_reload_events [:recorded, :changed]
   @bulk_actions %{
     unresolved: [:resolved, :ignored],
     resolved: [:unresolved, :ignored],
@@ -214,6 +214,7 @@ defmodule Imison.Web.ErrorsLive do
           <div class="error-row__title">
             <.link class="error-row__kind truncate" navigate={Paths.error(@dashboard_path, error.id)}>{error.kind}</.link>
             <span :if={back_again?(error)} class="flag flag--regressed">Back again</span>
+            <span :if={error.muted} class="flag flag--off">Muted</span>
           </div>
           <p class="error-row__message truncate">{error.message}</p>
           <div :if={error.location} class="error-row__meta">

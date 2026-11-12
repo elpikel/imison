@@ -356,7 +356,7 @@ defmodule Imison.Web.ErrorLiveTest do
     assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
   end
 
-  test "an unresolved error's detail page offers Resolve and Ignore, and a resolved one only Mark unresolved" do
+  test "an unresolved error's detail page offers Resolve and Ignore, and a resolved one only Mark unresolved, each beside Mute notifications" do
     start_imison(name: Dashboard, enabled: false)
     unresolved = record(kind: "KeyError")
     resolved = record(kind: "MatchError")
@@ -365,8 +365,48 @@ defmodule Imison.Web.ErrorLiveTest do
     {:ok, unresolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{unresolved.id}")
     {:ok, resolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{resolved.id}")
 
-    assert status_buttons(unresolved_view) == ["Resolve", "Ignore"]
-    assert status_buttons(resolved_view) == ["Mark unresolved"]
+    assert status_buttons(unresolved_view) == ["Resolve", "Ignore", "Mute notifications"]
+    assert status_buttons(resolved_view) == ["Mark unresolved", "Mute notifications"]
+  end
+
+  test "muting an error from its detail page stores it as muted and shows it muted with an Unmute action" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    view |> element(".rail .btn", "Mute notifications") |> render_click()
+
+    assert %Error{muted: true} = Repo.get!(Error, error.id)
+    assert has_element?(view, ".error-head__meta .flag", "Muted")
+    assert has_element?(view, ".rail .btn", "Unmute")
+    refute has_element?(view, ".rail .btn", "Mute notifications")
+  end
+
+  test "unmuting a muted error from its detail page stores it as unmuted and offers Mute notifications again" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, 1} = Errors.set_muted(Imison.config(Dashboard), [error.id], true)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    view |> element(".rail .btn", "Unmute") |> render_click()
+
+    assert %Error{muted: false} = Repo.get!(Error, error.id)
+    refute has_element?(view, ".error-head__meta .flag", "Muted")
+    assert has_element?(view, ".rail .btn", "Mute notifications")
+  end
+
+  test "muting keeps the error's status and the occurrence shown" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record_three_attempts()
+    [oldest_id, _middle_id, _latest_id] = occurrence_ids_oldest_first(error)
+
+    {:ok, view, _html} =
+      live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}?occurrence=#{oldest_id}")
+
+    view |> element(".rail .btn", "Mute notifications") |> render_click()
+
+    assert has_element?(view, ".error-head__meta .flag--unresolved", "Unresolved")
+    assert has_element?(view, ".occurrence-nav__when strong", "Occurrence 1 of 3")
   end
 
   test "a status event with an unknown status changes nothing and the page keeps working" do

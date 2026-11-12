@@ -815,6 +815,30 @@ defmodule Imison.Web.ErrorsLiveTest do
     refute has_element?(view, ".bulkbar")
   end
 
+  test "a muted unresolved error is listed, counted in its tab and marked muted" do
+    start_imison(name: Dashboard, enabled: false)
+    muted = record(kind: "KeyError")
+    record(kind: "ArgumentError")
+    {:ok, 1} = Errors.set_muted(Imison.config(Dashboard), [muted.id], true)
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    assert texts(view, @listed_kinds) == ["ArgumentError", "KeyError"]
+    assert tab_counts(view)["Unresolved"] == "2"
+    assert muted_kinds(view) == ["KeyError"]
+  end
+
+  test "an open list marks an error muted from its detail page without a reload" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, list, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, detail, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    detail |> element(".rail .btn", "Mute notifications") |> render_click()
+
+    assert muted_kinds(list) == ["KeyError"]
+  end
+
   test "another open list reloads its rows and counts when errors change status" do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
     first = record(kind: "KeyError")
@@ -979,6 +1003,17 @@ defmodule Imison.Web.ErrorsLiveTest do
     |> LazyHTML.from_fragment()
     |> LazyHTML.query(selector)
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
+  defp muted_kinds(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(".error-row__title")
+    |> Enum.filter(fn title ->
+      title |> LazyHTML.query(".flag") |> Enum.any?(&(&1 |> LazyHTML.text() |> String.trim() == "Muted"))
+    end)
+    |> Enum.map(&(&1 |> LazyHTML.query(".error-row__kind") |> LazyHTML.text() |> String.trim()))
   end
 
   defp tab_counts(view) do

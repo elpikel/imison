@@ -10,7 +10,9 @@ defmodule Imison.Web.ErrorLive do
   unknown id sends the developer back to the list with a message.
 
   The summary rail offers the status changes: Resolve and Ignore for an
-  unresolved error, Mark unresolved for a resolved or ignored one.
+  unresolved error, Mark unresolved for a resolved or ignored one, then
+  Mute notifications, or Unmute for a muted error, which the head flags as
+  Muted.
   """
 
   use Phoenix.LiveView
@@ -50,13 +52,20 @@ defmodule Imison.Web.ErrorLive do
 
   @impl Phoenix.LiveView
   def handle_event("set_status", params, %{assigns: %{conf: conf, error: error}} = socket) do
-    with {:ok, _count} <- Errors.set_status(conf, [error.id], params["status"]),
-         %Error{} = changed_error <- Errors.get(conf, error.id) do
-      {:noreply, assign(socket, error: changed_error)}
-    else
+    case Errors.set_status(conf, [error.id], params["status"]) do
+      {:ok, _count} -> {:noreply, show_stored_error(socket)}
       {:error, :invalid_status} -> {:noreply, socket}
-      nil -> {:noreply, back_to_list(socket)}
     end
+  end
+
+  def handle_event("mute", _params, %{assigns: %{conf: conf, error: error}} = socket) do
+    {:ok, _count} = Errors.set_muted(conf, [error.id], true)
+    {:noreply, show_stored_error(socket)}
+  end
+
+  def handle_event("unmute", _params, %{assigns: %{conf: conf, error: error}} = socket) do
+    {:ok, _count} = Errors.set_muted(conf, [error.id], false)
+    {:noreply, show_stored_error(socket)}
   end
 
   @impl Phoenix.LiveView
@@ -71,6 +80,7 @@ defmodule Imison.Web.ErrorLive do
             <p class="error-head__message">{@error.message}</p>
             <div class="error-head__meta">
               <span class={["flag", status_flag(@error.status)]}>{Format.status_label(@error.status)}</span>
+              <span :if={@error.muted} class="flag flag--off">Muted</span>
               <code :if={@error.location} class="error-head__location">{@error.location}</code>
             </div>
           </header>
@@ -91,6 +101,8 @@ defmodule Imison.Web.ErrorLive do
               >
                 {action.label}
               </button>
+              <button :if={@error.muted} class="btn" type="button" phx-click="unmute">Unmute</button>
+              <button :if={!@error.muted} class="btn" type="button" phx-click="mute">Mute notifications</button>
             </div>
           </div>
           <div class="rail__block rail__stats">
@@ -208,6 +220,13 @@ defmodule Imison.Web.ErrorLive do
       </div>
     </section>
     """
+  end
+
+  defp show_stored_error(%{assigns: %{conf: conf, error: error}} = socket) do
+    case Errors.get(conf, error.id) do
+      %Error{} = changed_error -> assign(socket, error: changed_error)
+      nil -> back_to_list(socket)
+    end
   end
 
   defp back_to_list(%{assigns: %{dashboard_path: dashboard_path}} = socket) do

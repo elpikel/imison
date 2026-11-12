@@ -165,7 +165,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want reminders and the daily digest sent once, not once per node, so that scaling out does not multiply my email.
   Done when: a node sends only after its insert into `imison_deliveries` under the unique (error, trigger, period) index succeeds.
 
-- [ ] **NOT-05 Mute an error** · needs: NOT-01
+- [x] **NOT-05 Mute an error** · needs: NOT-01
   As a developer, I want to mute a single error, so that a known issue stops notifying while it stays visible.
   Done when: a muted error sends no notifications and still appears and counts in the list.
 

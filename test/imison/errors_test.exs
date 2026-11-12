@@ -601,7 +601,72 @@ defmodule Imison.ErrorsTest do
 
     assert result == {:ok, 1}
     assert %Error{status: :resolved} = Repo.get!(Error, error.id)
-    assert log =~ "Imison failed to broadcast a status change"
+    assert log =~ "Imison failed to broadcast a change to errors"
+  end
+
+  test "muting stores the given errors as muted and leaves the others as they were" do
+    conf = config()
+    {:ok, first} = Errors.record(conf, occurrence(kind: "KeyError"))
+    {:ok, second} = Errors.record(conf, occurrence(kind: "ArgumentError"))
+    {:ok, untouched} = Errors.record(conf, occurrence(kind: "MatchError"))
+
+    assert Errors.set_muted(conf, [first.id, second.id], true) == {:ok, 2}
+
+    assert %Error{muted: true} = Repo.get!(Error, first.id)
+    assert %Error{muted: true} = Repo.get!(Error, second.id)
+    assert %Error{muted: false} = Repo.get!(Error, untouched.id)
+  end
+
+  test "unmuting stores a muted error as unmuted" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    {:ok, 1} = Errors.set_muted(conf, [error.id], true)
+
+    assert Errors.set_muted(conf, [error.id], false) == {:ok, 1}
+
+    assert %Error{muted: false} = Repo.get!(Error, error.id)
+  end
+
+  test "muting keeps the error's status" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    {:ok, 1} = Errors.set_status(conf, [error.id], :resolved)
+
+    {:ok, 1} = Errors.set_muted(conf, [error.id], true)
+
+    assert %Error{status: :resolved, muted: true} = Repo.get!(Error, error.id)
+  end
+
+  test "ids given as text are muted like integer ids and anything that is not an error id is skipped" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+
+    assert Errors.set_muted(conf, [Integer.to_string(error.id), "abc", "9223372036854775808", -1, nil], true) == {:ok, 1}
+
+    assert %Error{muted: true} = Repo.get!(Error, error.id)
+  end
+
+  test "an error muted and resolved while its updated_at is ahead of the clock is still reopened by its next occurrence" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence([]))
+    set_updated_at(error, DateTime.shift(DateTime.utc_now(), hour: 1))
+    {:ok, 1} = Errors.set_status(conf, [error.id], :resolved)
+    {:ok, 1} = Errors.set_muted(conf, [error.id], true)
+
+    {:ok, recorded} = Errors.record(conf, occurrence([]))
+
+    assert recorded.reopened
+    assert recorded.muted
+  end
+
+  test "with a configured prefix the error is muted in that schema" do
+    PrivatePrefix.migrate_up()
+    conf = config(prefix: PrivatePrefix.name())
+    {:ok, error} = Errors.record(conf, occurrence(kind: "Imison.PrefixError#{System.unique_integer([:positive])}"))
+
+    assert Errors.set_muted(conf, [error.id], true) == {:ok, 1}
+
+    assert %Error{muted: true} = Repo.get!(Error, error.id, prefix: PrivatePrefix.name())
   end
 
   test "pruning deletes occurrences older than the retention days, keeps the newer ones and returns how many rows went" do
