@@ -12,6 +12,7 @@ defmodule Imison.NotificationsTest do
   alias Imison.Notifications
   alias Imison.Notifications.Channels.Email
   alias Imison.Notifications.Delivery
+  alias Imison.Notifications.Rule
   alias Imison.Test.Mailer
   alias Imison.Web.Format
 
@@ -506,6 +507,51 @@ defmodule Imison.NotificationsTest do
     refute body =~ "happened again"
   end
 
+  test "a muted resolved error that comes back sends nothing and records no delivery with every rule on" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :resolved)
+    {:ok, 1} = Errors.set_muted(Imison.config(name), [error.id], true)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    turn_every_rule_on(name)
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    refute_email_sent()
+    assert deliveries(error.id) == []
+  end
+
+  test "a muted unresolved error that keeps happening sends no reminder and records no delivery with every rule on" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_existing_error(name, ~U[2026-11-12 09:30:00.000000Z])
+    {:ok, 1} = Errors.set_muted(Imison.config(name), [error.id], true)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    turn_every_rule_on(name)
+
+    Capture.capture(name, %{error.event | occurred_at: ~U[2026-11-12 10:15:00.000000Z]})
+
+    wait_for_worker(name)
+    refute_email_sent()
+    assert deliveries(error.id) == []
+  end
+
+  test "a resolved error muted then unmuted sends the regression notification when it comes back" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :resolved)
+    {:ok, 1} = Errors.set_muted(Imison.config(name), [error.id], true)
+    {:ok, 1} = Errors.set_muted(Imison.config(name), [error.id], false)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    assert_email_sent(to: [{"", "ops@example.com"}])
+    assert [%Delivery{trigger: :regression, status: :sent}] = deliveries(error.id)
+  end
+
   def report_delivery_insert(_event, _measurements, %{source: "imison_deliveries", query: "INSERT" <> _rest}, test_pid),
     do: send(test_pid, :delivery_insert)
 
@@ -526,6 +572,12 @@ defmodule Imison.NotificationsTest do
     %Error{id: error_id} = recorded_error(event.message)
     {:ok, 1} = Errors.set_status(Imison.config(name), [error_id], status)
     %{id: error_id, event: event}
+  end
+
+  defp turn_every_rule_on(name) do
+    for trigger <- Rule.triggers() do
+      {:ok, _rule} = Notifications.put_rule(Imison.config(name), trigger, true)
+    end
   end
 
   defp start_mailing_imison(opts \\ []) do

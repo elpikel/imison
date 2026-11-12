@@ -5,7 +5,7 @@ defmodule Imison.Errors.Broadcast do
   alias Imison.Config
 
   @type recorded_message :: {:imison, :recorded, pos_integer()}
-  @type status_changed_message :: {:imison, :status_changed, [pos_integer()]}
+  @type changed_message :: {:imison, :changed, [pos_integer()]}
 
   @spec subscribe(Config.t()) :: :ok | :no_pubsub | {:error, term()}
   def subscribe(%Config{pubsub: nil}), do: :no_pubsub
@@ -30,11 +30,11 @@ defmodule Imison.Errors.Broadcast do
     Phoenix.PubSub.broadcast(pubsub, topic(name), {:imison, :recorded, error_id})
   end
 
-  @spec status_changed(Config.t(), [pos_integer()]) :: :ok | {:error, term()}
-  def status_changed(%Config{pubsub: nil}, _error_ids), do: :ok
+  @spec changed(Config.t(), [pos_integer()]) :: :ok | {:error, term()}
+  def changed(%Config{pubsub: nil}, _error_ids), do: :ok
 
-  def status_changed(%Config{pubsub: pubsub, name: name}, error_ids) do
-    Phoenix.PubSub.broadcast(pubsub, topic(name), {:imison, :status_changed, error_ids})
+  def changed(%Config{pubsub: pubsub, name: name}, error_ids) do
+    Phoenix.PubSub.broadcast(pubsub, topic(name), {:imison, :changed, error_ids})
   end
 
   defp topic(name), do: "imison:" <> inspect(name)

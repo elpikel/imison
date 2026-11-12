@@ -53,7 +53,7 @@ A resolved error that receives a new occurrence and returns to `unresolved`.
 _Avoid_: reopen, recurrence
 
 **Muted**:
-A flag on an error that stops notifications while it stays visible in the list.
+A flag on an error, separate from its status, that stops the notifications about that error (new, regression, still happening) while it stays listed and counted under its status. The daily digest, a summary, still lists muted errors.
 _Avoid_: snoozed, silenced
 
 **Hourly count**:
