@@ -303,6 +303,52 @@ defmodule Imison.NotificationsTest do
     assert deliveries(error.id) == []
   end
 
+  test "the email of a resolved error that comes back is headed Came back with when it came back" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :resolved)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    came_back = Repo.get!(Error, error.id)
+    assert_received {:email, %Swoosh.Email{subject: subject, text_body: body}}
+    assert subject == "[Imison] Came back: #{came_back.kind} in #{came_back.location}"
+    assert body =~ "This error was resolved and happened again at #{Format.utc_time(came_back.regressed_at)}."
+  end
+
+  test "the email of a resolved error that comes back has its occurrence count, first seen and a link to its detail page" do
+    set_swoosh_global()
+    name = start_mailing_imison(dashboard_url: "https://app.example.com/errors")
+    error = capture_and_set_status(name, :resolved)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    came_back = Repo.get!(Error, error.id)
+    assert_received {:email, %Swoosh.Email{text_body: body}}
+    assert body =~ "Occurrences: 2"
+    assert body =~ "First seen: #{Format.utc_time(came_back.first_seen_at)}"
+    assert body =~ "https://app.example.com/errors/errors/#{error.id}"
+  end
+
+  test "the email of a new error is headed New error and doesn't say it came back" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    message = capture_new_error(name)
+
+    wait_for_worker(name)
+    error = recorded_error(message)
+    assert_received {:email, %Swoosh.Email{subject: subject, text_body: body}}
+    assert subject == "[Imison] New error: #{error.kind} in #{error.location}"
+    assert body =~ "New error: #{error.kind}"
+    refute body =~ "happened again"
+  end
+
   defp capture_and_set_status(name, status) do
     event = new_error_event()
     Capture.capture(name, event)

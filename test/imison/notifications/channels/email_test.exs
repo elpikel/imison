@@ -17,6 +17,17 @@ defmodule Imison.Notifications.Channels.EmailTest do
     assert_email_sent(subject: "[Imison] New error: ArgumentError")
   end
 
+  test "a regression without the time it came back is emailed as having happened again" do
+    conf = Config.new(repo: Repo, username: "admin", password: "secret", mailer: Mailer, from: "errors@example.com")
+    message = message(trigger: :regression, regressed_at: nil)
+
+    assert :ok = Email.deliver(message, %{"recipients" => ["ops@example.com"]}, conf)
+
+    assert_received {:email, %Swoosh.Email{subject: subject, text_body: body}}
+    assert subject == "[Imison] Came back: #{message.kind} in #{message.location}"
+    assert body =~ "This error was resolved and happened again.\n"
+  end
+
   test "an email isn't sent without a mailer" do
     conf = Config.new(repo: Repo, username: "admin", password: "secret", from: "errors@example.com")
 

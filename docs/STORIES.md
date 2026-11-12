@@ -116,7 +116,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want one notification per event even when several nodes catch the same error at the same moment, so that alerts are not duplicated.
   Done when: only the process whose upsert inserted the error sends "new", and only the one whose upsert flipped the error from `resolved` (`record/2` tells it so) sends "regression", even under concurrent capture.
 
-- [ ] **NOT-02 Email when a resolved error comes back** · needs: MN-02
+- [x] **NOT-02 Email when a resolved error comes back** · needs: MN-02
   As a developer, I want an email when a resolved error comes back, so that I know a fix did not hold.
   Done when: a regression sends one email marked as a returning error.
 
