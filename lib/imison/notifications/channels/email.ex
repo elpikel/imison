@@ -9,7 +9,12 @@ if Code.ensure_loaded?(Swoosh.Email) do
     headed "New error" for a new error and "Came back" (with when it came
     back) for a resolved error that happened again, then the error's kind,
     message, location, occurrence count, when it was first seen and, with the
-    `dashboard_url` option, a link to its detail page.
+    `dashboard_url` option, a link to its detail page. The test message sent
+    from the notifications screen is "[Imison] Test email", saying that
+    delivery works.
+
+    Each recipient must look like an email address (`local@domain`); the
+    domain isn't looked up.
 
     Compiled only when the host depends on Swoosh.
     """
@@ -26,10 +31,9 @@ if Code.ensure_loaded?(Swoosh.Email) do
 
     @impl Channel
     def validate_config(%{"recipients" => [_recipient | _more] = recipients}) do
-      if Enum.all?(recipients, &is_binary/1) do
-        :ok
-      else
-        {:error, recipients: "must be email addresses"}
+      case Enum.reject(recipients, &email_address?/1) do
+        [] -> :ok
+        invalid_recipients -> {:error, Enum.map(invalid_recipients, &{:recipients, not_an_address(&1)})}
       end
     end
 
@@ -49,11 +53,26 @@ if Code.ensure_loaded?(Swoosh.Email) do
       end
     end
 
+    defp email_address?(recipient) when is_binary(recipient), do: recipient =~ ~r/\A[^@\s]+@[^@\s]+\z/
+    defp email_address?(_recipient), do: false
+
+    defp not_an_address(recipient) when is_binary(recipient), do: "#{recipient} is not an email address"
+    defp not_an_address(recipient), do: "#{inspect(recipient)} is not an email address"
+
+    defp subject(%Message{trigger: :test}), do: "[Imison] Test email"
     defp subject(%Message{location: nil} = message), do: "[Imison] #{headline(message)}: #{message.kind}"
     defp subject(%Message{} = message), do: "[Imison] #{headline(message)}: #{message.kind} in #{message.location}"
 
     defp headline(%Message{trigger: :new}), do: "New error"
     defp headline(%Message{trigger: :regression}), do: "Came back"
+
+    defp text_body(%Message{trigger: :test}) do
+      """
+      Email delivery from Imison works.
+
+      This is a test email sent from the notifications screen. Imison emails these recipients when an error matches one of the rules switched on there.
+      """
+    end
 
     defp text_body(%Message{} = message) do
       [

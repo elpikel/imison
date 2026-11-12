@@ -4,7 +4,9 @@ defmodule Imison.Notifications.Message do
   `c:Imison.Notifications.Channel.deliver/3`.
 
   `trigger` is what the notification is about (`:new` for an error seen for
-  the first time, `:regression` for a resolved error that came back);
+  the first time, `:regression` for a resolved error that came back, `:test`
+  for the test message sent from the notifications screen, which is about no
+  error, so its error fields are `nil`);
   `regressed_at` is when the error last came back, `nil` if it never did;
   `url` is the link to the error's detail page on the dashboard, `nil` when
   the `dashboard_url` option isn't set.
@@ -15,15 +17,17 @@ defmodule Imison.Notifications.Message do
   alias Imison.Notifications.Rule
   alias Imison.Web.Paths
 
+  @type trigger :: Rule.trigger() | :test
+
   @type t :: %__MODULE__{
-          trigger: Rule.trigger(),
-          error_id: pos_integer(),
-          kind: String.t(),
-          message: String.t(),
+          trigger: trigger(),
+          error_id: pos_integer() | nil,
+          kind: String.t() | nil,
+          message: String.t() | nil,
           location: String.t() | nil,
-          occurrence_count: pos_integer(),
-          first_seen_at: DateTime.t(),
-          last_seen_at: DateTime.t(),
+          occurrence_count: pos_integer() | nil,
+          first_seen_at: DateTime.t() | nil,
+          last_seen_at: DateTime.t() | nil,
           regressed_at: DateTime.t() | nil,
           url: String.t() | nil
         }
@@ -56,6 +60,20 @@ defmodule Imison.Notifications.Message do
       last_seen_at: error.last_seen_at,
       regressed_at: error.regressed_at,
       url: error_url(dashboard_url, error.id)
+    }
+  end
+
+  @doc false
+  @spec test() :: t()
+  def test do
+    %__MODULE__{
+      trigger: :test,
+      error_id: nil,
+      kind: nil,
+      message: nil,
+      occurrence_count: nil,
+      first_seen_at: nil,
+      last_seen_at: nil
     }
   end
 
