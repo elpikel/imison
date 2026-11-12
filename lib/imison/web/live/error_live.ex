@@ -2,9 +2,12 @@ defmodule Imison.Web.ErrorLive do
   @moduledoc """
   An error's detail page (`docs/design/error-detail.html`): its kind,
   message, location, status, occurrence count and first and last seen, then
-  the latest occurrence's stack trace, request, Logger metadata and runtime.
-  Panels with nothing to show are left out. An unknown id sends the developer
-  back to the list with a message.
+  one occurrence's stack trace, request, Logger metadata and runtime. The
+  occurrence is the one named by `?occurrence=<id>`, or the latest when the
+  URL names none, names another error's occurrence or gives no number; Older
+  and Newer step to its neighbours by patching the URL. Panels with nothing to show are
+  left out, and an error without occurrences has no occurrence navigation. An
+  unknown id sends the developer back to the list with a message.
 
   The summary rail offers the status changes: Resolve and Ignore for an
   unresolved error, Mark unresolved for a resolved or ignored one.
@@ -17,6 +20,7 @@ defmodule Imison.Web.ErrorLive do
   alias Imison.Errors.Occurrence
   alias Imison.Web.Format
   alias Imison.Web.Layouts
+  alias Imison.Web.Paths
 
   @status_flags %{unresolved: "flag--unresolved", resolved: "flag--resolved", ignored: "flag--off"}
   @status_actions %{
@@ -32,16 +36,16 @@ defmodule Imison.Web.ErrorLive do
 
     case Errors.get(conf, id) do
       %Error{} = error ->
-        {:ok,
-         assign(socket,
-           page_title: error.kind,
-           error: error,
-           occurrence: Errors.latest_occurrence(conf, error.id)
-         )}
+        {:ok, assign(socket, page_title: error.kind, error: error)}
 
       nil ->
         {:ok, back_to_list(socket)}
     end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_params(params, _uri, %{assigns: %{conf: conf, error: error}} = socket) do
+    {:noreply, assign(socket, stepped_occurrence: Errors.occurrence(conf, error.id, params["occurrence"]))}
   end
 
   @impl Phoenix.LiveView
@@ -70,7 +74,10 @@ defmodule Imison.Web.ErrorLive do
               <code :if={@error.location} class="error-head__location">{@error.location}</code>
             </div>
           </header>
-          <.occurrence :if={@occurrence} occurrence={@occurrence} />
+          <%= if @stepped_occurrence do %>
+            <.occurrence_navigation stepped_occurrence={@stepped_occurrence} error_path={Paths.error(@dashboard_path, @error.id)} />
+            <.occurrence occurrence={@stepped_occurrence.occurrence} />
+          <% end %>
         </div>
         <aside class="panel rail" aria-label="Error summary">
           <div class="rail__block">
@@ -103,6 +110,44 @@ defmodule Imison.Web.ErrorLive do
         </aside>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :stepped_occurrence, :map, required: true
+  attr :error_path, :string, required: true
+
+  defp occurrence_navigation(assigns) do
+    ~H"""
+    <section class="panel">
+      <div class="panel__head occurrence-nav">
+        <p class="occurrence-nav__when">
+          <strong>Occurrence {@stepped_occurrence.position} of {@stepped_occurrence.total}</strong>
+          <span class="muted">{Format.utc_time(@stepped_occurrence.occurrence.occurred_at)}</span>
+        </p>
+        <div class="btn-row">
+          <.step label="Older" error_path={@error_path} occurrence_id={@stepped_occurrence.older_id} />
+          <.step label="Newer" error_path={@error_path} occurrence_id={@stepped_occurrence.newer_id} />
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :error_path, :string, required: true
+  attr :occurrence_id, :integer, required: true
+
+  defp step(%{occurrence_id: nil} = assigns) do
+    ~H"""
+    <button class="btn btn--sm" type="button" disabled>{@label}</button>
+    """
+  end
+
+  defp step(assigns) do
+    ~H"""
+    <.link class="btn btn--sm" patch={"#{@error_path}?#{URI.encode_query(occurrence: @occurrence_id)}"}>
+      {@label}
+    </.link>
     """
   end
 

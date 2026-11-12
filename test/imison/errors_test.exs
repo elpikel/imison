@@ -415,6 +415,87 @@ defmodule Imison.ErrorsTest do
     assert Repo.get_by(Error, fingerprint: error.fingerprint) == nil
   end
 
+  test "an occurrence is given with its position among the error's occurrences by time and its older and newer neighbours" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 12:00:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 11:00:00.000000Z]))
+    [oldest_id, middle_id, latest_id] = occurrence_ids_oldest_first(error)
+
+    assert %{occurrence: %Occurrence{id: ^middle_id}, position: 2, total: 3} =
+             Errors.occurrence(conf, error.id, middle_id)
+
+    assert %{older_id: ^oldest_id, newer_id: ^latest_id} = Errors.occurrence(conf, error.id, middle_id)
+  end
+
+  test "without an occurrence id the error's latest occurrence is given, with no newer neighbour" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 12:00:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    [oldest_id, latest_id] = occurrence_ids_oldest_first(error)
+
+    assert %{occurrence: %Occurrence{id: ^latest_id}, position: 2, total: 2, older_id: ^oldest_id, newer_id: nil} =
+             Errors.occurrence(conf, error.id, nil)
+  end
+
+  test "the oldest occurrence has no older neighbour" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 12:00:00.000000Z]))
+    [oldest_id, latest_id] = occurrence_ids_oldest_first(error)
+
+    assert %{occurrence: %Occurrence{id: ^oldest_id}, position: 1, total: 2, older_id: nil, newer_id: ^latest_id} =
+             Errors.occurrence(conf, error.id, Integer.to_string(oldest_id))
+  end
+
+  test "occurrences at the same time are ordered by id, the later recorded being the newer" do
+    conf = config()
+    same_time = ~U[2026-11-11 10:00:00.000000Z]
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: same_time))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: same_time))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: same_time))
+    [first_id, second_id, third_id] = occurrence_ids_oldest_first(error)
+
+    assert %{occurrence: %Occurrence{id: ^third_id}, position: 3} = Errors.occurrence(conf, error.id, nil)
+
+    assert %{position: 2, older_id: ^first_id, newer_id: ^third_id} =
+             Errors.occurrence(conf, error.id, second_id)
+  end
+
+  test "an occurrence id of another error, or one that is not an id, gives the error's latest occurrence" do
+    conf = config()
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 12:00:00.000000Z]))
+    {:ok, other_error} = Errors.record(conf, occurrence(kind: "KeyError"))
+    [other_occurrence_id] = occurrence_ids_oldest_first(other_error)
+    [_oldest_id, latest_id] = occurrence_ids_oldest_first(error)
+
+    for occurrence_id <- [other_occurrence_id, "abc", "12abc", "99999999999999999999", -1] do
+      assert %{occurrence: %Occurrence{id: ^latest_id}, position: 2, total: 2} =
+               Errors.occurrence(conf, error.id, occurrence_id)
+    end
+  end
+
+  test "an error whose occurrences were all pruned has no occurrence" do
+    conf = config(retention_days: 7)
+    {:ok, error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-01 10:00:00.000000Z]))
+    Errors.prune(conf, ~U[2026-11-12 12:00:00.000000Z])
+
+    assert Errors.occurrence(conf, error.id, nil) == nil
+  end
+
+  test "with a configured prefix occurrences are read from that schema" do
+    PrivatePrefix.migrate_up()
+    conf = config(prefix: PrivatePrefix.name())
+    kind = "Imison.PrefixError#{System.unique_integer([:positive])}"
+    {:ok, error} = Errors.record(conf, occurrence(kind: kind, occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    {:ok, _error} = Errors.record(conf, occurrence(kind: kind, occurred_at: ~U[2026-11-11 12:00:00.000000Z]))
+    [oldest_id, latest_id] = Occurrence |> Repo.all(prefix: PrivatePrefix.name()) |> Enum.map(& &1.id) |> Enum.sort()
+
+    assert %{occurrence: %Occurrence{id: ^latest_id}, position: 2, total: 2, older_id: ^oldest_id} =
+             Errors.occurrence(conf, error.id, nil)
+  end
+
   test "setting a status stores it on the given errors and leaves the others as they were" do
     conf = config()
     {:ok, first} = Errors.record(conf, occurrence(kind: "KeyError"))
@@ -631,6 +712,15 @@ defmodule Imison.ErrorsTest do
     |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
     |> order_by([occurrence: occurrence], occurrence.occurred_at)
     |> select([occurrence: occurrence], occurrence.occurred_at)
+    |> Repo.all()
+  end
+
+  defp occurrence_ids_oldest_first(%Error{id: error_id}) do
+    Occurrence
+    |> from(as: :occurrence)
+    |> where([occurrence: occurrence], occurrence.error_id == ^error_id)
+    |> order_by([occurrence: occurrence], asc: occurrence.occurred_at, asc: occurrence.id)
+    |> select([occurrence: occurrence], occurrence.id)
     |> Repo.all()
   end
 
