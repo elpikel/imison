@@ -10,6 +10,7 @@ defmodule Imison.Web.NotificationsLiveTest do
   alias Imison.Notifications
   alias Imison.Notifications.Channel
   alias Imison.Notifications.Channels.Email
+  alias Imison.Notifications.Channels.Webhook
   alias Imison.Notifications.ChannelSetting
   alias Imison.Notifications.Delivery
   alias Imison.Notifications.Message
@@ -18,6 +19,7 @@ defmodule Imison.Web.NotificationsLiveTest do
   alias Imison.Test.Mailer
   alias Imison.Test.PagerChannel
   alias Imison.Test.Repo
+  alias Imison.Test.WebhookReceiver
 
   defmodule FailingMailer do
     @moduledoc false
@@ -513,6 +515,102 @@ defmodule Imison.Web.NotificationsLiveTest do
     assert_received {:paged, %Message{trigger: :new, message: ^message}, _channel_config}
   end
 
+  test "a stored secret has a Remove box and an unset secret has none" do
+    start_mailing_imison(channels: [PagerChannel, Webhook])
+    put_pager_channel(%{"service_url" => "https://pager.example.com/alerts", "token" => "pager-token-1"})
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    assert has_element?(view, "#pager-settings input[type=checkbox][name='remove[token]']")
+    refute has_element?(view, "#webhook-settings input[type=checkbox][name='remove[secret]']")
+  end
+
+  test "ticking Remove next to a stored secret and saving removes the stored secret" do
+    start_mailing_imison(channels: [Webhook])
+    put_webhook_channel(%{"url" => "https://hooks.example.com/imison", "secret" => "whsec-1"})
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    view |> form("#webhook-settings", %{"remove" => %{"secret" => "true"}}) |> render_submit()
+
+    assert %ChannelSetting{config: config} = stored_channel(Webhook)
+    assert config == %{"url" => "https://hooks.example.com/imison"}
+    assert has_element?(view, ".flash--info", "Webhook settings saved.")
+    refute has_element?(view, "#webhook-settings input[type=checkbox][name='remove[secret]']")
+  end
+
+  test "ticking Remove next to a required secret and saving shows its error and keeps the stored secret" do
+    start_mailing_imison(channels: [PagerChannel])
+    put_pager_channel(%{"service_url" => "https://pager.example.com/alerts", "token" => "pager-token-1"})
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    view |> form("#pager-settings", %{"remove" => %{"token" => "true"}}) |> render_submit()
+
+    assert has_element?(view, "#pager-token-errors", "can't be blank")
+    assert %ChannelSetting{config: %{"token" => "pager-token-1"}} = stored_channel(PagerChannel)
+  end
+
+  test "Send test with Remove ticked next to a stored secret sends without it" do
+    start_mailing_imison(channels: [Webhook])
+    url = WebhookReceiver.start(test: self())
+    put_webhook_channel(%{"url" => url, "secret" => "whsec-1"})
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    view |> form("#webhook-settings", %{"remove" => %{"secret" => "true"}}) |> render_change()
+    send_test(view, "webhook")
+
+    assert_received {:webhook_request, %{headers: headers, body: body}}
+    assert %{"trigger" => "test"} = JSON.decode!(body)
+    refute Map.has_key?(headers, "x-imison-signature")
+    assert has_element?(view, ".flash--info", "Test sent through Webhook.")
+    assert %ChannelSetting{config: %{"secret" => "whsec-1"}} = stored_channel(Webhook)
+  end
+
+  test "saving the webhook with a URL that isn't http or https shows the error under the URL and stores nothing" do
+    start_mailing_imison(channels: [Webhook])
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    view
+    |> form("#webhook-settings", %{"enabled" => "true", "config" => %{"url" => "ftp://files.example.com/imison"}})
+    |> render_submit()
+
+    assert has_element?(view, "#webhook-url-errors", "must be an http:// or https:// URL")
+    assert stored_channel(Webhook) == nil
+  end
+
+  test "a webhook saved on the screen POSTs a new error captured afterwards, signed with its secret" do
+    start_imison(name: Dashboard, channels: [Webhook])
+    url = WebhookReceiver.start(test: self())
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    view
+    |> form("#webhook-settings", %{"enabled" => "true", "config" => %{"url" => url <> "/hooks", "secret" => "whsec-1"}})
+    |> render_submit()
+
+    message = capture_new_error()
+    wait_for_worker(Dashboard)
+
+    assert_received {:webhook_request, %{method: "POST", path: "/hooks", headers: headers, body: body}}
+    assert %{"trigger" => "new", "message" => ^message} = JSON.decode!(body)
+    assert "sha256=" <> _signature = headers["x-imison-signature"]
+  end
+
+  test "a webhook answering a captured error with a 500 records the delivery failed and logs it without the URL" do
+    start_imison(name: Dashboard, enabled: true, channels: [Webhook])
+    url = WebhookReceiver.start(test: self(), status: 500)
+    %ChannelSetting{id: channel_id} = put_webhook_channel(%{"url" => url <> "/hooks"})
+
+    log =
+      capture_log(fn ->
+        capture_new_error()
+        wait_for_worker(Dashboard)
+      end)
+
+    assert_received {:webhook_request, %{path: "/hooks"}}
+    assert %Delivery{status: :failed} = Repo.get_by(Delivery, channel_id: channel_id)
+    assert log =~ "{:http_status, 500}"
+    refute log =~ url
+  end
+
   test "a visitor without a session is redirected from the notifications screen to the login page" do
     start_mailing_imison()
 
@@ -538,6 +636,13 @@ defmodule Imison.Web.NotificationsLiveTest do
   defp put_pager_channel(channel_config) do
     {:ok, channel} =
       Notifications.put_channel(Imison.config(Dashboard), PagerChannel.type(), %{enabled: true, config: channel_config})
+
+    channel
+  end
+
+  defp put_webhook_channel(channel_config) do
+    {:ok, channel} =
+      Notifications.put_channel(Imison.config(Dashboard), Webhook.type(), %{enabled: true, config: channel_config})
 
     channel
   end

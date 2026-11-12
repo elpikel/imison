@@ -44,11 +44,13 @@ defmodule Imison.Notifications do
     |> repo.one(prefix: prefix)
   end
 
-  @spec put_channel_settings(Config.t(), module(), %{enabled: boolean(), config: map()}) ::
-          {:ok, ChannelSetting.t()} | {:error, {:invalid_config, keyword()}}
-  def put_channel_settings(%Config{} = conf, channel_module, %{enabled: enabled, config: submitted_config})
-      when is_boolean(enabled) do
-    channel_config = merge_with_stored_config(conf, channel_module, submitted_config)
+  @spec put_channel_settings(Config.t(), module(), %{
+          enabled: boolean(),
+          config: map(),
+          removed_secrets: [String.t()]
+        }) :: {:ok, ChannelSetting.t()} | {:error, {:invalid_config, keyword()}}
+  def put_channel_settings(%Config{} = conf, channel_module, %{enabled: enabled} = submission) when is_boolean(enabled) do
+    channel_config = merge_with_stored_config(conf, channel_module, submission)
 
     with :ok <- validate_channel_config(channel_module, channel_config) do
       {:ok, %ChannelSetting{}} = put_channel(conf, channel_module.type(), %{enabled: enabled, config: channel_config})
@@ -62,9 +64,10 @@ defmodule Imison.Notifications do
     end)
   end
 
-  @spec send_test(Config.t(), module(), map()) :: :ok | {:error, {:invalid_config, keyword()}} | {:error, term()}
-  def send_test(%Config{} = conf, channel_module, submitted_config) do
-    channel_config = merge_with_stored_config(conf, channel_module, submitted_config)
+  @spec send_test(Config.t(), module(), %{config: map(), removed_secrets: [String.t()]}) ::
+          :ok | {:error, {:invalid_config, keyword()}} | {:error, term()}
+  def send_test(%Config{} = conf, channel_module, submission) do
+    channel_config = merge_with_stored_config(conf, channel_module, submission)
 
     with :ok <- validate_channel_config(channel_module, channel_config) do
       attempt_delivery(conf, %{module: channel_module, config: channel_config}, Message.test())
@@ -164,16 +167,21 @@ defmodule Imison.Notifications do
     rule
   end
 
-  defp merge_with_stored_config(conf, channel_module, submitted_config) do
+  defp merge_with_stored_config(conf, channel_module, %{config: submitted_config, removed_secrets: removed_secrets}) do
     stored_config =
       case channel_setting(conf, channel_module.type()) do
         %ChannelSetting{config: stored_config} -> stored_config
         nil -> %{}
       end
 
-    channel_module
-    |> Channel.config_fields()
-    |> Enum.reduce(stored_config, &put_submitted_value(&2, &1, Map.get(submitted_config, &1.name)))
+    fields = Channel.config_fields(channel_module)
+    removable_names = for %{type: :secret, name: name} <- fields, name in removed_secrets, do: name
+
+    Enum.reduce(
+      fields,
+      Map.drop(stored_config, removable_names),
+      &put_submitted_value(&2, &1, Map.get(submitted_config, &1.name))
+    )
   end
 
   defp put_submitted_value(channel_config, %{type: :secret}, nil), do: channel_config

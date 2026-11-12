@@ -6,7 +6,7 @@ An error tracker you add to a Phoenix app as a library, installed the way Oban i
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it) and `igniter` (`mix imison.install` makes the changes with it and prints them as manual steps without it; the host adds it, usually `only: [:dev]`). Test only: `phx_new` (the installer's tests generate a Phoenix project with it). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it) and `igniter` (`mix imison.install` makes the changes with it and prints them as manual steps without it; the host adds it, usually `only: [:dev]`). Test only: `phx_new` (the installer's tests generate a Phoenix project with it) and `bandit` (a local HTTP server the webhook tests post to). The webhook channel uses OTP's `:inets` (`:httpc`), `:ssl` and `:public_key`, listed in `extra_applications`. Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
 
 ## Installation
 
@@ -259,7 +259,53 @@ defmodule MyApp.PagerChannel do
 end
 ```
 
-The settings are stored in `imison_channels.config` (jsonb) under the field names, in the row for the channel's `type/0`, and handed to `validate_config/1` and `deliver/3` as that map with string keys. Saving a panel calls `validate_config/1` first: its `{:error, [field: "reason"]}` reasons are shown under the fields with those names (others under the panel's fields) and nothing is stored. A channel is used only while its row is on and its stored settings pass `validate_config/1`. A `:secret` field is never shown back: the panel says a value is set, and leaving it blank keeps the stored value, both when saving and when sending a test. Settings in the stored row that the fields don't list are kept when the panel is saved.
+The settings are stored in `imison_channels.config` (jsonb) under the field names, in the row for the channel's `type/0`, and handed to `validate_config/1` and `deliver/3` as that map with string keys. Saving a panel calls `validate_config/1` first: its `{:error, [field: "reason"]}` reasons are shown under the fields with those names (others under the panel's fields) and nothing is stored. A channel is used only while its row is on and its stored settings pass `validate_config/1`. A `:secret` field is never shown back: the panel says a value is set, and leaving it blank keeps the stored value, both when saving and when sending a test; ticking the "Remove" box next to a set secret clears it instead (a new value typed in wins), again both when saving and when sending a test. Settings in the stored row that the fields don't list are kept when the panel is saved.
+
+#### Webhook
+
+`Imison.Notifications.Channels.Webhook` POSTs each notification as JSON to a URL you choose. It isn't in the default `channels`; add it:
+
+```elixir
+{Imison,
+ repo: MyApp.Repo,
+ # ...
+ channels: [Imison.Notifications.Channels.Email, Imison.Notifications.Channels.Webhook]}
+```
+
+Then on the Notifications screen fill the Webhook panel's "URL" (`http://` or `https://`; anything else is refused under the field) and, optionally, a "Signing secret", switch it on and save. "Send test" POSTs a message with `"trigger": "test"`.
+
+The body is the `Imison.Notifications.Message` as a JSON object (`content-type: application/json`), times in ISO 8601 and unset fields as `null`:
+
+```json
+{
+  "trigger": "new",
+  "error_id": 42,
+  "kind": "ArgumentError",
+  "message": "invalid order id",
+  "location": "MyApp.Orders.fetch/1 (lib/my_app/orders.ex:12)",
+  "occurrence_count": 1,
+  "first_seen_at": "2026-11-12T09:30:00.000000Z",
+  "last_seen_at": "2026-11-12T09:30:00.000000Z",
+  "regressed_at": null,
+  "url": "https://app.example.com/errors/errors/42",
+  "summary": null
+}
+```
+
+`trigger` is `new`, `regression`, `still_happening`, `digest` or `test`. For the daily summary (`digest`) the error fields are `null` and `summary` holds `date`, `url` and the sections `new`, `came_back` and `most_frequent`, each `{"lines": [...], "total": n}` with lines of `error_id`, `kind`, `message`, `location`, `count` and `url`.
+
+With a signing secret, each request also carries `x-imison-timestamp` (Unix seconds) and `x-imison-signature: sha256=<hex>`, the lowercase hex HMAC-SHA256 of `<timestamp>.<raw body>` keyed with the secret. To verify it, recompute the HMAC over the raw request body (before any JSON parsing), compare in constant time and reject old timestamps to stop replays:
+
+```elixir
+def verify(raw_body, timestamp, "sha256=" <> signature, secret) do
+  expected = :hmac |> :crypto.mac(:sha256, secret, timestamp <> "." <> raw_body) |> Base.encode16(case: :lower)
+  fresh? = abs(System.system_time(:second) - String.to_integer(timestamp)) <= 300
+
+  fresh? and Plug.Crypto.secure_compare(expected, signature)
+end
+```
+
+A 2xx answer counts as sent. Any other status (redirects aren't followed) fails the delivery with `{:http_status, status}`; a connection that is refused, fails TLS verification, takes longer than 5 seconds to open or longer than 5 more seconds to answer fails it with the reason, so one delivery takes at most about 10 seconds. Deliveries run in the background, but "Send test" waits for the answer, so the screen is busy for up to those 10 seconds with a slow endpoint. A failed delivery is logged and recorded as `failed` like any other; the logged reason never contains the URL or the secret. Requests go through OTP's `:httpc` (default profile, with every option set per request) with TLS peer and hostname verification against the system's CA certificates (`:public_key.cacerts_get/0`); Imison adds no HTTP client dependency.
 
 ### Retention
 

@@ -20,7 +20,7 @@ defmodule Imison.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :inets, :ssl, :public_key, :crypto],
       mod: {Imison.Application, []}
     ]
   end
@@ -44,6 +44,7 @@ defmodule Imison.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:bandit, "~> 1.14", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ecto_sql, "~> 3.14"},
       {:ex_slop, "~> 0.4.5", only: [:dev, :test], runtime: false},
