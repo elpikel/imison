@@ -126,9 +126,9 @@ These are not in the design's story list; every phase 1 story needs them to be b
 
 ### Installation
 
-- [ ] **INS-01 One install task** · needs: INS-02, INS-03, AUTH-01
+- [x] **INS-01 One install task** · needs: INS-02, INS-03, AUTH-01
   As a developer, I want to add one dependency and run `mix imison.install`, so that config, supervision, migration and route are set up without hand edits.
-  Done when: on a fresh `mix phx.new` app the Igniter task makes the five changes from `PROJECT.md` plus `enabled: false` in `config/test.exs`, skips changes already present, and the app boots and shows the dashboard after `mix ecto.migrate`.
+  Done when: on a fresh `mix phx.new` app the Igniter task makes the changes listed in `PROJECT.md` (shared config, production login in `config/runtime.exs`, dev and test logins with `enabled: false` in `config/test.exs`, supervision, migration, route, formatter), skips changes already present, and the app boots and shows the dashboard after `mix ecto.migrate`.
 
 - [ ] **INS-04 Manual install steps** · needs: INS-01
   As a developer, I want the manual steps documented, so that I can install without Igniter.

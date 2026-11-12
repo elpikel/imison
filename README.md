@@ -2,31 +2,42 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location, updating live when the host's PubSub is configured; errors can be resolved, ignored or marked unresolved from their detail page or in bulk from the list; a new error, and a resolved error that comes back, is emailed through the host's Swoosh mailer, with recipients, rules and a test email on the dashboard's Notifications screen; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. `mix imison.install` sets Imison up in a Phoenix app in one step. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location, updating live when the host's PubSub is configured; errors can be resolved, ignored or marked unresolved from their detail page or in bulk from the list; a new error, and a resolved error that comes back, is emailed through the host's Swoosh mailer, with recipients, rules and a test email on the dashboard's Notifications screen; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it). Planned: optional Igniter (installer). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it) and `igniter` (`mix imison.install`; the host adds it, usually `only: [:dev]`). Test only: `phx_new` (the installer's tests generate a Phoenix project with it). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
 
-## Installation (planned)
+## Installation
 
 ```elixir
 # mix.exs of the host app
 {:imison, "~> 0.1"},
-{:igniter, "~> 0.5", only: [:dev]}
+{:igniter, "~> 0.8", only: [:dev]}
 ```
 
 ```sh
 mix deps.get
-mix imison.install
+mix imison.install      # or in one step, without editing mix.exs: mix igniter.install imison
 mix ecto.migrate
 ```
 
-The installer, the manual steps and every option are in [`docs/PROJECT.md`](docs/PROJECT.md#installation).
+`mix imison.install` is an Igniter task, like `mix oban.install`. It shows the changes and asks before writing them, and skips any change already there, so running it again changes nothing:
+
+- `config/config.exs`: `config :my_app, Imison` with `repo` (the app's Ecto repo), `pubsub` (the endpoint's `pubsub_server`) and, when the app has a `MyApp.Mailer` module, `mailer`
+- `config/runtime.exs`, inside `if config_env() == :prod do`: `username` and `password` from `System.fetch_env!("IMISON_USER")` and `System.fetch_env!("IMISON_PASSWORD")`
+- `config/dev.exs`: the login `admin` with a random password generated at install time (sign in to the dev dashboard with it)
+- `config/test.exs`: `enabled: false` and the login `test`/`test`, so tests record nothing
+- the application's children: `{Imison, Application.fetch_env!(:my_app, Imison)}` after the repo and the PubSub
+- a migration `priv/repo/migrations/<timestamp>_add_imison.exs` calling `Imison.Migration.up(version: 1)` and `down(version: 1)`
+- the router: `import Imison.Web.Router` and `imison_dashboard "/errors"` in a `scope "/"` piped through `:browser`
+- `.formatter.exs`: `:imison` in `import_deps`
+
+After `mix ecto.migrate` the dashboard is at `/errors`. The app boots in dev and test without environment variables; in production set `IMISON_USER` and `IMISON_PASSWORD`, or the boot fails. To mount the dashboard at another path, change `"/errors"` in the router (and `dashboard_url`, if set). Each change is described by hand in the sections below; the full design is in [`docs/PROJECT.md`](docs/PROJECT.md#installation).
 
 ## Configuration
 
-Built today: add Imison to the host's supervision tree, after its repo, and set its options in `config/runtime.exs`.
+Built today: `mix imison.install` does this for you. To do it by hand, add Imison to the host's supervision tree, after its repo, and set its options in `config/runtime.exs`.
 
 ```elixir
 # application.ex
