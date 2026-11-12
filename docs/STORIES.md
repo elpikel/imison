@@ -175,6 +175,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
 
 ## Phase 3: extensions
 
-- [ ] **NOT-07 More channels and custom channels** · needs: NOT-01
+- [x] **NOT-07 More channels and custom channels** · needs: NOT-01
   As a developer, I want to add Slack, a webhook or Telegram as a channel, or write my own channel module, so that alerts reach me where I already look.
   Done when: a host module implementing `Imison.Notifications.Channel` and listed in `channels` receives messages; Slack and webhook channels ship with Imison.
+  Note: Telegram was not built; a host can add it as its own channel module.

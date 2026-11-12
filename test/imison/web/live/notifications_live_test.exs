@@ -10,6 +10,7 @@ defmodule Imison.Web.NotificationsLiveTest do
   alias Imison.Notifications
   alias Imison.Notifications.Channel
   alias Imison.Notifications.Channels.Email
+  alias Imison.Notifications.Channels.Slack
   alias Imison.Notifications.Channels.Webhook
   alias Imison.Notifications.ChannelSetting
   alias Imison.Notifications.Delivery
@@ -611,6 +612,53 @@ defmodule Imison.Web.NotificationsLiveTest do
     refute log =~ url
   end
 
+  test "the Slack panel asks for the incoming webhook URL as a secret and never shows a stored one" do
+    start_mailing_imison(channels: [Email, Slack])
+    webhook_url = "https://hooks.slack.com/services/T000/B000/#{System.unique_integer([:positive])}"
+    put_slack_channel(%{"webhook_url" => webhook_url})
+
+    {:ok, view, html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+
+    assert panel_titles(view) == ["Email", "Slack"]
+    assert has_element?(view, "#slack-settings input[type=password][name='config[webhook_url]']")
+    assert has_element?(view, "#slack-settings", "Set — leave blank to keep.")
+    refute html =~ webhook_url
+    refute render(view) =~ webhook_url
+  end
+
+  test "saving the Slack panel with an incoming webhook URL stores it switched on" do
+    start_mailing_imison(channels: [Slack])
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+    webhook_url = "https://hooks.slack.com/services/T000/B000/#{System.unique_integer([:positive])}"
+
+    view
+    |> form("#slack-settings", %{"enabled" => "true", "config" => %{"webhook_url" => webhook_url}})
+    |> render_submit()
+
+    assert %ChannelSetting{enabled: true, config: %{"webhook_url" => ^webhook_url}} = stored_channel(Slack)
+    assert has_element?(view, ".flash--info", "Slack settings saved.")
+    refute render(view) =~ webhook_url
+  end
+
+  test "saving the Slack panel with a URL that isn't a Slack incoming webhook shows the error without the URL and stores nothing" do
+    start_mailing_imison(channels: [Slack])
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/notifications")
+    webhook_url = "https://example.com/hooks/#{System.unique_integer([:positive])}"
+
+    view
+    |> form("#slack-settings", %{"enabled" => "true", "config" => %{"webhook_url" => webhook_url}})
+    |> render_submit()
+
+    assert has_element?(
+             view,
+             "#slack-webhook_url-errors",
+             "must be a Slack incoming webhook URL, starting with https://hooks.slack.com/"
+           )
+
+    assert stored_channel(Slack) == nil
+    refute render(view) =~ webhook_url
+  end
+
   test "a visitor without a session is redirected from the notifications screen to the login page" do
     start_mailing_imison()
 
@@ -643,6 +691,13 @@ defmodule Imison.Web.NotificationsLiveTest do
   defp put_webhook_channel(channel_config) do
     {:ok, channel} =
       Notifications.put_channel(Imison.config(Dashboard), Webhook.type(), %{enabled: true, config: channel_config})
+
+    channel
+  end
+
+  defp put_slack_channel(channel_config) do
+    {:ok, channel} =
+      Notifications.put_channel(Imison.config(Dashboard), Slack.type(), %{enabled: true, config: channel_config})
 
     channel
   end
