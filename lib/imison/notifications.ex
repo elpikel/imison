@@ -7,6 +7,7 @@ defmodule Imison.Notifications do
   alias Imison.Config
   alias Imison.Errors
   alias Imison.Errors.Error
+  alias Imison.Notifications.Channel
   alias Imison.Notifications.ChannelSetting
   alias Imison.Notifications.Delivery
   alias Imison.Notifications.Message
@@ -43,18 +44,28 @@ defmodule Imison.Notifications do
     |> repo.one(prefix: prefix)
   end
 
-  @spec put_channel_and_rules(Config.t(), module(), %{config: map(), rules: %{Rule.trigger() => boolean()}}) ::
+  @spec put_channel_settings(Config.t(), module(), %{enabled: boolean(), config: map()}) ::
           {:ok, ChannelSetting.t()} | {:error, {:invalid_config, keyword()}}
-  def put_channel_and_rules(%Config{repo: repo} = conf, channel_module, %{config: channel_config, rules: rules}) do
+  def put_channel_settings(%Config{} = conf, channel_module, %{enabled: enabled, config: submitted_config})
+      when is_boolean(enabled) do
+    channel_config = merge_with_stored_config(conf, channel_module, submitted_config)
+
     with :ok <- validate_channel_config(channel_module, channel_config) do
-      repo.transact(fn ->
-        store_channel_and_rules(conf, channel_module.type(), %{config: channel_config, rules: rules})
-      end)
+      {:ok, %ChannelSetting{}} = put_channel(conf, channel_module.type(), %{enabled: enabled, config: channel_config})
     end
   end
 
+  @spec put_rules(Config.t(), %{Rule.trigger() => boolean()}) :: {:ok, [Rule.t()]}
+  def put_rules(%Config{repo: repo} = conf, rules) do
+    repo.transact(fn ->
+      {:ok, Enum.map(rules, fn {trigger, enabled} -> store_rule(conf, trigger, enabled) end)}
+    end)
+  end
+
   @spec send_test(Config.t(), module(), map()) :: :ok | {:error, {:invalid_config, keyword()}} | {:error, term()}
-  def send_test(%Config{} = conf, channel_module, channel_config) do
+  def send_test(%Config{} = conf, channel_module, submitted_config) do
+    channel_config = merge_with_stored_config(conf, channel_module, submitted_config)
+
     with :ok <- validate_channel_config(channel_module, channel_config) do
       attempt_delivery(conf, %{module: channel_module, config: channel_config}, Message.test())
     end
@@ -148,11 +159,26 @@ defmodule Imison.Notifications do
     |> repo.all(prefix: prefix)
   end
 
-  defp store_channel_and_rules(conf, type, %{config: channel_config, rules: rules}) do
-    {:ok, channel} = put_channel(conf, type, %{enabled: true, config: channel_config})
-    Enum.each(rules, fn {trigger, enabled} -> {:ok, _rule} = put_rule(conf, trigger, enabled) end)
-    {:ok, channel}
+  defp store_rule(conf, trigger, enabled) do
+    {:ok, rule} = put_rule(conf, trigger, enabled)
+    rule
   end
+
+  defp merge_with_stored_config(conf, channel_module, submitted_config) do
+    stored_config =
+      case channel_setting(conf, channel_module.type()) do
+        %ChannelSetting{config: stored_config} -> stored_config
+        nil -> %{}
+      end
+
+    channel_module
+    |> Channel.config_fields()
+    |> Enum.reduce(stored_config, &put_submitted_value(&2, &1, Map.get(submitted_config, &1.name)))
+  end
+
+  defp put_submitted_value(channel_config, %{type: :secret}, nil), do: channel_config
+  defp put_submitted_value(channel_config, %{name: name}, nil), do: Map.delete(channel_config, name)
+  defp put_submitted_value(channel_config, %{name: name}, value), do: Map.put(channel_config, name, value)
 
   defp validate_channel_config(channel_module, channel_config) do
     with {:error, reasons} <- channel_module.validate_config(channel_config) do

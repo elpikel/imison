@@ -20,7 +20,9 @@ if Code.ensure_loaded?(Swoosh.Email) do
     works.
 
     Each recipient must look like an email address (`local@domain`); the
-    domain isn't looked up.
+    domain isn't looked up. On the Notifications screen its panel is "Email",
+    with a "Send to" field for the recipients and, under the title, the mailer
+    and sender it sends with.
 
     Compiled only when the host depends on Swoosh.
     """
@@ -34,6 +36,27 @@ if Code.ensure_loaded?(Swoosh.Email) do
 
     @impl Channel
     def type, do: "email"
+
+    @impl Channel
+    def label, do: "Email"
+
+    @impl Channel
+    def config_fields do
+      [
+        %{
+          name: "recipients",
+          label: "Send to",
+          type: :recipients,
+          hint: "Separate addresses with commas or new lines."
+        }
+      ]
+    end
+
+    @impl Channel
+    def describe(%Config{mailer: mailer, from: from}) when not is_nil(mailer) and not is_nil(from),
+      do: "Sends with #{inspect(mailer)} as #{from}"
+
+    def describe(%Config{}), do: "Set the mailer and from options to send email."
 
     @impl Channel
     def validate_config(%{"recipients" => [_recipient | _more] = recipients}) do

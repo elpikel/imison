@@ -193,6 +193,19 @@ defmodule Imison.Notifications.Channel do
   @callback validate_config(map()) :: :ok | {:error, keyword()}
   @callback deliver(Imison.Notifications.Message.t(), channel_config :: map(), Imison.Config.t()) ::
               :ok | {:error, term()}
+
+  # Optional: how the channel's panel looks on the Notifications screen
+  @callback label() :: String.t()
+  @callback config_fields() :: [
+              %{
+                required(:name) => String.t(),
+                required(:label) => String.t(),
+                required(:type) => :recipients | :text | :url | :secret,
+                optional(:hint) => String.t()
+              }
+            ]
+  @callback describe(Imison.Config.t()) :: String.t()
+  @optional_callbacks label: 0, config_fields: 0, describe: 1
 end
 
 # config/config.exs, optional: the default list holds only Email (none without Swoosh)
@@ -200,7 +213,7 @@ config :my_app, Imison,
   channels: [Imison.Notifications.Channels.Email, MyApp.SlackChannel]
 ```
 
-`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The daily digest (`trigger: :digest`) is about no single error, so its error fields are `nil` and its `summary` holds the UTC `date`, `url` (the dashboard's error list, absent without `dashboard_url`) and three sections, `new`, `came_back` and `most_frequent`, each `%{lines: [...], total: n}`: at most 20 lines (5 for `most_frequent`), and `total` counting every error in the section that day so a channel can say how many it left out; each line has the error's id, kind, message, location, that day's occurrence `count` and `url`. `summary` is `nil` for every other message. Every channel receives digests and must render or skip them. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release.
+`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The daily digest (`trigger: :digest`) is about no single error, so its error fields are `nil` and its `summary` holds the UTC `date`, `url` (the dashboard's error list, absent without `dashboard_url`) and three sections, `new`, `came_back` and `most_frequent`, each `%{lines: [...], total: n}`: at most 20 lines (5 for `most_frequent`), and `total` counting every error in the section that day so a channel can say how many it left out; each line has the error's id, kind, message, location, that day's occurrence `count` and `url`. `summary` is `nil` for every other message. Every channel receives digests and must render or skip them. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release. The Notifications screen shows one panel per listed module, built from the optional callbacks: titled by `label/0` (else the type), `describe/1` under the title, a field per `config_fields/0` entry (`hint` optional), an on/off switch, Save and "Send test" for that channel alone; the rules are one global block for every channel that's on. Field values are stored in the channel's `config` under their names; `:secret` values are never shown back, and blank keeps the stored one.
 
 ## Configuration
 
