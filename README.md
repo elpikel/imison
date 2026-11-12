@@ -2,11 +2,11 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location, updating live when the host's PubSub is configured; errors can be resolved, ignored or marked unresolved from their detail page or in bulk from the list; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location, updating live when the host's PubSub is configured; errors can be resolved, ignored or marked unresolved from their detail page or in bulk from the list; a new error is emailed through the host's Swoosh mailer; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Planned: optional Swoosh (email) and Igniter (installer). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it). Planned: optional Igniter (installer). Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
 
 ## Installation (planned)
 
@@ -115,6 +115,33 @@ config :my_app, Imison,
 ```
 
 Each recorded occurrence is broadcast on that PubSub under a topic per Imison instance; the list reloads at most once a second however many errors arrive, so a crash storm doesn't flood the browser. Without `pubsub` (the default) nothing is broadcast, there is no indicator and the list shows new errors when the page is reloaded. If no PubSub runs under that name, failed broadcasts and subscriptions are logged, recording is unaffected and the list still works, without the indicator or live updates. Updates reach lists open on other nodes only when the nodes share the PubSub (are clustered); see MN-04 in `docs/STORIES.md`.
+
+### Email on a new error
+
+Built today: when an error is seen for the first time, Imison emails it through the host's own Swoosh mailer. Set `mailer` (the host's `Swoosh.Mailer` module) and `from`, and optionally `dashboard_url`, the absolute URL where `imison_dashboard` is mounted, so the email links to the error's page:
+
+```elixir
+config :my_app, Imison,
+  repo: MyApp.Repo,
+  mailer: MyApp.Mailer,
+  from: "errors@example.com",
+  dashboard_url: "https://app.example.com/errors",
+  username: System.fetch_env!("IMISON_USER"),
+  password: System.fetch_env!("IMISON_PASSWORD")
+```
+
+The email is plain text: the subject is `[Imison] New error: <kind> in <location>`, the body has the kind, message, location, when it was first seen and, with `dashboard_url`, the link (`<dashboard_url>/errors/<id>`); without `dashboard_url` it is sent without a link. Only the first occurrence of an error sends one; repeats send nothing.
+
+Recipients are stored in the database, one channel per type: until the Notifications screen (NOT-03) exists, add the email channel's row by hand, e.g. in a migration or `psql` (with the `prefix` schema if you set one):
+
+```sql
+INSERT INTO imison_channels (type, enabled, config, inserted_at, updated_at)
+VALUES ('email', true, '{"recipients": ["ops@example.com"]}', now(), now());
+```
+
+Nothing is sent when that row is missing, disabled or lists no recipients, or when the `new` rule is stored as disabled in `imison_rules` (a trigger without a row is on for `new` and `regression`). Emails are sent in the background under Imison's own `Task.Supervisor`, so a slow mailer never holds up capture. Each attempt is recorded in `imison_deliveries` as `sent` or `failed`; a mailer that returns an error or raises (or a missing `mailer` or `from`) is logged under the `:imison` logger domain, and the error is recorded as usual.
+
+`channels` lists the channel modules (default `[Imison.Notifications.Channels.Email]`, or `[]` when the host doesn't depend on Swoosh). A module listed there must implement the `Imison.Notifications.Channel` behaviour (`type/0`, `validate_config/1`, `deliver/3`), or Imison refuses to start.
 
 ### Capture off in tests
 

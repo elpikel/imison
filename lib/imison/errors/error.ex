@@ -18,6 +18,7 @@ defmodule Imison.Errors.Error do
     field :last_seen_at, :utc_datetime_usec
     field :occurrence_count, :integer, default: 0
     field :regressed_at, :utc_datetime_usec
+    field :created, :boolean, virtual: true, default: false
     field :reopened, :boolean, virtual: true, default: false
 
     timestamps()

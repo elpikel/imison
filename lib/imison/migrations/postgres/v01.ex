@@ -61,6 +61,8 @@ defmodule Imison.Migrations.Postgres.V01 do
       timestamps type: :utc_datetime_usec
     end
 
+    create_if_not_exists unique_index(:imison_channels, [:type], prefix: prefix)
+
     create_if_not_exists table(:imison_rules, primary_key: false, prefix: prefix) do
       add :id, :bigserial, primary_key: true
       add :trigger, :text, null: false
@@ -68,6 +70,8 @@ defmodule Imison.Migrations.Postgres.V01 do
 
       timestamps type: :utc_datetime_usec
     end
+
+    create_if_not_exists unique_index(:imison_rules, [:trigger], prefix: prefix)
 
     create_if_not_exists table(:imison_deliveries, primary_key: false, prefix: prefix) do
       add :id, :bigserial, primary_key: true

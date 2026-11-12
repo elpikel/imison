@@ -3,6 +3,7 @@ defmodule Imison.CaptureTest do
 
   import Ecto.Query
   import ExUnit.CaptureLog
+  import Imison.Test.CaptureHelpers, only: [wait_for_worker: 1]
 
   alias Imison.Capture
   alias Imison.Capture.Worker
@@ -117,12 +118,6 @@ defmodule Imison.CaptureTest do
 
   test "the dropped count is zero when no instance runs under the name" do
     assert Capture.dropped(make_ref()) == 0
-  end
-
-  defp wait_for_worker(name) do
-    name
-    |> Imison.Registry.via(Worker)
-    |> :sys.get_state()
   end
 
   defp recorded(kind) do

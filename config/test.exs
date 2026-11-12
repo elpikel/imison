@@ -10,6 +10,8 @@ config :imison, Imison.Test.Endpoint,
   render_errors: [formats: [html: Imison.Test.ErrorHTML], layout: false],
   server: false
 
+config :imison, Imison.Test.Mailer, adapter: Swoosh.Adapters.Test
+
 config :imison, Repo,
   username: "postgres",
   password: "postgres",
@@ -24,3 +26,5 @@ config :imison, ecto_repos: [Repo]
 config :logger, level: :warning
 
 config :phoenix, :json_library, JSON
+
+config :swoosh, :api_client, false

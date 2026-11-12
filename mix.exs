@@ -51,6 +51,7 @@ defmodule Imison.MixProject do
       {:phoenix_live_view, "~> 1.1"},
       {:postgrex, "~> 0.22"},
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
+      {:swoosh, "~> 1.29", optional: true},
       {:telemetry, "~> 1.3"}
     ]
   end
