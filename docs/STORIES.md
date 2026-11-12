@@ -145,7 +145,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want old occurrences deleted after a retention period, so that the tables stay small.
   Done when: a pruner deletes occurrences older than `retention_days` (default 30) and keeps the error row; running it on several nodes is safe.
 
-- [ ] **AUTH-03 Slow down failed logins** · needs: AUTH-02
+- [x] **AUTH-03 Slow down failed logins** · needs: AUTH-02
   As a developer, I want repeated failed logins slowed down, so that the password cannot be brute-forced.
   Done when: failed attempts are counted in the database and each further attempt is delayed, across nodes.
 

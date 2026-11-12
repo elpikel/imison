@@ -88,9 +88,17 @@ defmodule Imison.Migrations.Postgres.V01 do
 
     create_if_not_exists index(:imison_deliveries, [:channel_id], prefix: prefix)
     create_if_not_exists index(:imison_deliveries, [:error_id], prefix: prefix)
+
+    create_if_not_exists table(:imison_login_failures, primary_key: false, prefix: prefix) do
+      add :id, :bigserial, primary_key: true
+      add :failed_at, :utc_datetime_usec, null: false
+    end
+
+    create_if_not_exists index(:imison_login_failures, [:failed_at], prefix: prefix)
   end
 
   def down(%{prefix: prefix}) do
+    drop_if_exists table(:imison_login_failures, prefix: prefix)
     drop_if_exists table(:imison_deliveries, prefix: prefix)
     drop_if_exists table(:imison_rules, prefix: prefix)
     drop_if_exists table(:imison_channels, prefix: prefix)

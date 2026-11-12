@@ -1,9 +1,20 @@
 defmodule Imison.Web.SessionControllerTest do
   use Imison.ConnCase, async: false
 
+  import Ecto.Query
+  import ExUnit.CaptureLog
   import Imison.Test.CaptureHelpers
 
   alias Imison.Test.Dashboard
+  alias Imison.Test.Repo
+
+  defmodule UnavailableRepo do
+    @moduledoc false
+
+    def config, do: []
+
+    def transact(_function), do: raise(DBConnection.ConnectionError, "connection not available")
+  end
 
   test "the login page shows the sign-in form without a session" do
     start_imison(name: Dashboard, enabled: false)
@@ -149,5 +160,115 @@ defmodule Imison.Web.SessionControllerTest do
     signed_in_conn = sign_in("/errors", "admin", "changed")
 
     assert {:ok, _view, _html} = live(signed_in_conn, "/errors")
+  end
+
+  test "a wrong password after fewer than five recent failures shows the usual error and stores the failure" do
+    start_imison(name: Dashboard, enabled: false)
+    insert_failures(4, seconds_ago: 1)
+
+    conn = post_login("admin", "wrong")
+
+    document = conn |> html_response(401) |> LazyHTML.from_document()
+    assert document |> LazyHTML.query(".flash--error[role=alert]") |> LazyHTML.text() == "Wrong username or password."
+    assert stored_failure_count() == 5
+  end
+
+  test "after five or more recent failures even the right password is refused until the wait is over" do
+    start_imison(name: Dashboard, enabled: false)
+    insert_failures(7, seconds_ago: 1)
+
+    conn = post_login("admin", "secret")
+
+    document = conn |> html_response(429) |> LazyHTML.from_document()
+
+    assert document |> LazyHTML.query(".flash--error[role=alert]") |> LazyHTML.text() ==
+             "Too many failed sign-ins. Try again in 3 seconds."
+
+    assert [_form] = document |> LazyHTML.query("form.auth__card") |> Enum.to_list()
+    assert stored_failure_count() == 7
+    assert {:error, {:redirect, %{to: "/errors/login"}}} = conn |> next_browser_conn() |> live("/errors")
+  end
+
+  test "the wait after many failures is at most five minutes" do
+    start_imison(name: Dashboard, enabled: false)
+    insert_failures(20, seconds_ago: 60)
+
+    conn = post_login("admin", "wrong")
+
+    assert html_response(conn, 429) =~ "Too many failed sign-ins. Try again in 240 seconds."
+  end
+
+  test "once the wait is over the right password signs in and clears the stored failures" do
+    start_imison(name: Dashboard, enabled: false)
+    insert_failures(6, seconds_ago: 10)
+
+    conn = post_login("admin", "secret")
+
+    assert redirected_to(conn) == "/errors"
+    assert {:ok, _view, _html} = conn |> next_browser_conn() |> live("/errors")
+    assert stored_failure_count() == 0
+  end
+
+  test "failures recorded by another node count toward the wait" do
+    start_imison(name: Dashboard, enabled: false)
+    insert_failures(4, seconds_ago: 1)
+    html_response(post_login("admin", "wrong"), 401)
+
+    conn = post_login("admin", "wrong")
+
+    assert html_response(conn, 429) =~ "Too many failed sign-ins. Try again in 1 second."
+  end
+
+  test "failures older than fifteen minutes do not count and are deleted" do
+    start_imison(name: Dashboard, enabled: false)
+    insert_failures(10, seconds_ago: 16 * 60)
+
+    conn = post_login("admin", "wrong")
+
+    assert html_response(conn, 401) =~ "Wrong username or password."
+    assert stored_failure_count() == 1
+  end
+
+  test "a sign-in is refused without checking the password when failed sign-ins cannot be read, and the failure is logged" do
+    start_imison(name: Dashboard, enabled: false, repo: UnavailableRepo)
+
+    log =
+      capture_log([metadata: [:domain]], fn ->
+        conn = post_login("admin", "secret")
+
+        assert conn
+               |> html_response(503)
+               |> LazyHTML.from_document()
+               |> LazyHTML.query(".flash--error[role=alert]")
+               |> LazyHTML.text() ==
+                 "Sign-in is unavailable. Try again shortly."
+
+        assert {:error, {:redirect, %{to: "/errors/login"}}} = conn |> next_browser_conn() |> live("/errors")
+      end)
+
+    assert log =~ ~r/domain=elixir\.imison \[error\] Imison failed to check failed sign-ins.*connection not available/s
+  end
+
+  defp post_login(username, password) do
+    login_conn = get(browser_conn(), "/errors/login")
+    token = login_conn |> html_response(200) |> login_form_token()
+
+    login_conn
+    |> next_browser_conn()
+    |> post("/errors/login", %{"_csrf_token" => token, "username" => username, "password" => password})
+  end
+
+  defp insert_failures(count, seconds_ago: seconds_ago) do
+    latest_failed_at = DateTime.shift(DateTime.utc_now(), second: -seconds_ago)
+    failures = Enum.map(1..count, &%{failed_at: DateTime.add(latest_failed_at, -&1 + 1, :millisecond)})
+
+    Repo.insert_all("imison_login_failures", failures)
+  end
+
+  defp stored_failure_count do
+    "imison_login_failures"
+    |> from(as: :login_failure)
+    |> select([login_failure: login_failure], count(login_failure.id))
+    |> Repo.one()
   end
 end

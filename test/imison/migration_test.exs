@@ -5,7 +5,7 @@ defmodule Imison.MigrationTest do
 
   @private_prefix PrivatePrefix.name()
 
-  @tables ~w(imison_channels imison_deliveries imison_errors imison_hourly_counts imison_occurrences imison_rules)
+  @tables ~w(imison_channels imison_deliveries imison_errors imison_hourly_counts imison_login_failures imison_occurrences imison_rules)
 
   defmodule VersionOneMigration do
     @moduledoc false
@@ -16,7 +16,7 @@ defmodule Imison.MigrationTest do
     def down, do: Imison.Migration.down(version: 1, prefix: PrivatePrefix.name())
   end
 
-  test "the host's migration creates the six Imison tables in the public schema" do
+  test "the host's migration creates the seven Imison tables in the public schema" do
     assert tables_in("public") == @tables
   end
 
@@ -44,7 +44,7 @@ defmodule Imison.MigrationTest do
     assert %{rows: [[^fingerprint]]} = Repo.query!(~s(SELECT fingerprint FROM "#{@private_prefix}".imison_errors))
   end
 
-  test "rolling back version 1 drops the six tables and leaves version 0" do
+  test "rolling back version 1 drops the seven tables and leaves version 0" do
     version = PrivatePrefix.migrate_up(VersionOneMigration)
 
     :ok = Ecto.Migrator.down(Repo, version, VersionOneMigration, log: false, migration_lock: false)
@@ -53,7 +53,7 @@ defmodule Imison.MigrationTest do
     assert migrated_version(@private_prefix) == 0
   end
 
-  test "up with a prefix creates that schema holding the six tables" do
+  test "up with a prefix creates that schema holding the seven tables" do
     PrivatePrefix.migrate_up()
 
     assert %{rows: [[@private_prefix]]} =
