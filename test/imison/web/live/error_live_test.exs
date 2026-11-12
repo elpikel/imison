@@ -250,6 +250,18 @@ defmodule Imison.Web.ErrorLiveTest do
     assert panel_titles(view) == []
   end
 
+  test "an error whose occurrences were all pruned shows its summary without stack trace or context panels" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError", context: %{"metadata" => %{"order_id" => 7}}, occurred_at: days_ago(40))
+    Errors.prune(Imison.config(Dashboard), DateTime.utc_now())
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    assert has_element?(view, ".error-head__kind", "KeyError")
+    assert has_element?(view, ".error-head__message", "boom")
+    assert panel_titles(view) == []
+  end
+
   test "context values are shown as text, never as markup" do
     start_imison(name: Dashboard, enabled: false)
 
@@ -388,6 +400,8 @@ defmodule Imison.Web.ErrorLiveTest do
   end
 
   defp minutes_ago(minutes), do: DateTime.shift(DateTime.utc_now(), minute: -minutes)
+
+  defp days_ago(days), do: DateTime.shift(DateTime.utc_now(), day: -days)
 
   defp set_status(%Error{id: error_id}, status) do
     Error

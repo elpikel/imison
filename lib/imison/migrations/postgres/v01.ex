@@ -40,6 +40,7 @@ defmodule Imison.Migrations.Postgres.V01 do
     end
 
     create_if_not_exists index(:imison_occurrences, [:error_id, :occurred_at], prefix: prefix)
+    create_if_not_exists index(:imison_occurrences, [:occurred_at], prefix: prefix)
 
     create_if_not_exists table(:imison_hourly_counts, primary_key: false, prefix: prefix) do
       add :id, :bigserial, primary_key: true
@@ -51,6 +52,7 @@ defmodule Imison.Migrations.Postgres.V01 do
     end
 
     create_if_not_exists unique_index(:imison_hourly_counts, [:error_id, :hour], prefix: prefix)
+    create_if_not_exists index(:imison_hourly_counts, [:hour], prefix: prefix)
 
     create_if_not_exists table(:imison_channels, primary_key: false, prefix: prefix) do
       add :id, :bigserial, primary_key: true

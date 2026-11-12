@@ -58,7 +58,8 @@ Imison is a plain Mix library published on Hex, created with `mix new imison`, n
 lib/imison.ex                    supervisor, config validation, report/3
 lib/imison/migration.ex          versioned up/down
 lib/imison/capture/              logger handler, telemetry handlers, worker
-lib/imison/errors/               schemas, fingerprint, upsert, pruner
+lib/imison/errors/               schemas, fingerprint, upsert
+lib/imison/pruner.ex             pruner process (retention)
 lib/imison/notifications/        notifier, Channel behaviour, Email channel
 lib/imison/web/router.ex         imison_dashboard macro
 lib/imison/web/live/             error list, error detail, notifications, login

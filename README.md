@@ -2,7 +2,7 @@
 
 An error tracker you add to a Phoenix app as a library, installed the way Oban is: one dependency, one install task, one migration. It captures errors inside the host app, groups them, stores them in the app's own Postgres and serves a dashboard from the app's router.
 
-**Status:** design stage. `mix imison.install` sets Imison up in a Phoenix app in one step. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location, updating live when the host's PubSub is configured; errors can be resolved, ignored or marked unresolved from their detail page or in bulk from the list; a new error, and a resolved error that comes back, is emailed through the host's Swoosh mailer, with recipients, rules and a test email on the dashboard's Notifications screen; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
+**Status:** design stage. `mix imison.install` sets Imison up in a Phoenix app in one step. The `Imison` supervisor with validated config (read back with `Imison.config/1`), versioned migrations creating the six `imison_` tables (version 1), error grouping and capture without code changes exist: crashed processes, Phoenix request exceptions and Oban job failures are recorded in the background, as are exceptions the app rescues and reports with `Imison.report/3`, except exceptions listed in `ignore`; `enabled: false` switches capture off. The dashboard mounts in the host's router with `imison_dashboard`, serves its own assets and asks for the configured login, and lists errors by status (Unresolved, Resolved, Ignored, with counts), most recently seen first, with a search over kind, message and location, updating live when the host's PubSub is configured; errors can be resolved, ignored or marked unresolved from their detail page or in bulk from the list; a new error, and a resolved error that comes back, is emailed through the host's Swoosh mailer, with recipients, rules and a test email on the dashboard's Notifications screen; occurrences and hourly counts older than `retention_days` (default 30) are deleted every hour, keeping the errors themselves; see [`docs/PROJECT.md`](docs/PROJECT.md) for the design and user stories.
 
 ## Stack
 
@@ -218,6 +218,21 @@ Set the recipients and rules on the dashboard's Notifications screen (`<path>/no
 Nothing is sent until recipients are saved, or when the trigger's rule (`new` or `regression`) is switched off (a trigger never saved is on for `new` and `regression`). The settings live in `imison_channels` (one row per channel type) and `imison_rules`. Emails are sent in the background under Imison's own `Task.Supervisor`, so a slow mailer never holds up capture. Each attempt is recorded in `imison_deliveries` as `sent` or `failed`; a mailer that returns an error or raises (or a missing `mailer` or `from`) is logged under the `:imison` logger domain, and the error is recorded as usual.
 
 `channels` lists the channel modules (default `[Imison.Notifications.Channels.Email]`, or `[]` when the host doesn't depend on Swoosh). A module listed there must implement the `Imison.Notifications.Channel` behaviour (`type/0`, `validate_config/1`, `deliver/3`), or Imison refuses to start.
+
+### Retention
+
+Built today: every hour each running instance deletes occurrences, and hourly counts, older than `retention_days` (default 30), so the tables stay small. The errors themselves are kept, with their occurrence count and first and last seen; the detail page of an error whose occurrences are all gone shows its summary without stack trace or context.
+
+```elixir
+# config/runtime.exs
+config :my_app, Imison,
+  repo: MyApp.Repo,
+  username: System.fetch_env!("IMISON_USER"),
+  password: System.fetch_env!("IMISON_PASSWORD"),
+  retention_days: 14
+```
+
+The first run is a minute after the instance starts. Rows go in batches of 10 000, so one run never holds long locks, and every node may run it at the same time: each deletes rows the others haven't locked. A failed run (e.g. the database is unavailable) is logged under the `:imison` logger domain and the next one runs an hour later. With `enabled: false` nothing is pruned.
 
 ### Capture off in tests
 
