@@ -187,7 +187,7 @@ The dashboard's home page lists the errors of one status, most recently seen fir
 
 ### Live updates
 
-Built today: set `pubsub` to the host's `Phoenix.PubSub` name (the one its endpoint's `pubsub_server` uses) and an open error list updates without a reload: a new error appears, a repeated one gets its new count, last seen and heat strip, and the tab counts follow. The top bar then shows a "Live" indicator.
+Built today: an open error list updates without a reload: a new error appears, a repeated one gets its new count, last seen and heat strip, and the tab counts follow, while the selection and the search stay. The top bar shows a "Live" indicator whose title says how the list updates. Set `pubsub` to the host's `Phoenix.PubSub` name (the one its endpoint's `pubsub_server` uses) for updates as errors happen:
 
 ```elixir
 config :my_app, Imison,
@@ -197,7 +197,7 @@ config :my_app, Imison,
   password: System.fetch_env!("IMISON_PASSWORD")
 ```
 
-Each recorded occurrence is broadcast on that PubSub under a topic per Imison instance; the list reloads at most once a second however many errors arrive, so a crash storm doesn't flood the browser. Without `pubsub` (the default) nothing is broadcast, there is no indicator and the list shows new errors when the page is reloaded. If no PubSub runs under that name, failed broadcasts and subscriptions are logged, recording is unaffected and the list still works, without the indicator or live updates. Updates reach lists open on other nodes only when the nodes share the PubSub (are clustered); see MN-04 in `docs/STORIES.md`.
+Each recorded occurrence is broadcast on that PubSub under a topic per Imison instance; the list reloads at most once a second however many errors arrive, so a crash storm doesn't flood the browser. Broadcasts reach lists open on other nodes only when the nodes are clustered and share the PubSub, so an open list also refreshes from the database every 5 seconds whenever it can't count on them: without `pubsub` (the default; nothing is broadcast), while its node has no connected nodes, or when no PubSub runs under the configured name (failed broadcasts and subscriptions are logged and recording is unaffected). Its indicator then reads "Refreshes from the database every few seconds." A list on a node with connected nodes relies on the broadcasts alone; if the node loses them, the list starts refreshing at its next 5-second check. Clustering is never required: unclustered nodes all write to the same database, and their lists catch up within the interval.
 
 ### Email on a new or returning error
 
