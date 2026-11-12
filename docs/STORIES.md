@@ -161,7 +161,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want repeat notifications for the same error throttled, so that an outage does not send hundreds of emails.
   Done when: "still happening" notifications for one error are sent at most once per period, recorded in `imison_deliveries`.
 
-- [ ] **MN-05 Reminders and digest sent once** · needs: NOT-04
+- [x] **MN-05 Reminders and digest sent once** · needs: NOT-04
   As a developer, I want reminders and the daily digest sent once, not once per node, so that scaling out does not multiply my email.
   Done when: a node sends only after its insert into `imison_deliveries` under the unique (error, trigger, period) index succeeds.
 
