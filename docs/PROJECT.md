@@ -150,6 +150,7 @@ An error is a group; an occurrence is one event in that group. There are no proj
 | `imison_channels` | One configured notification channel | `type` (email first), `enabled`, `config` (jsonb) |
 | `imison_rules` | When to notify | `trigger` (`new`, `regression`, `still_happening`, `digest`), `enabled` |
 | `imison_deliveries` | Sent notifications, for throttling and debugging | `channel_id`, `error_id`, `trigger`, `status`, `sent_at` |
+| `imison_login_failures` | Failed dashboard sign-ins of the last 15 minutes, for slowing down the next attempt | `failed_at` |
 
 `Imison.Migration` is versioned the way `Oban.Migration` is: a release that changes the schema ships version 2, and the host adds a migration that calls `Imison.Migration.up(version: 2)`. The unique index on `fingerprint` makes capture an upsert. A pruner process deletes occurrences older than `retention_days` and keeps the error row.
 
