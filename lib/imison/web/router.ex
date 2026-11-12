@@ -13,8 +13,10 @@ defmodule Imison.Web.Router do
         imison_dashboard "/errors"
       end
 
-  The error list is at `path` and each error's detail page at
-  `<path>/errors/<id>`.
+  The error list is at `path`, each error's detail page at
+  `<path>/errors/<id>` and the notifications screen, where the email
+  recipients and rules are set and a test email is sent, at
+  `<path>/notifications`.
 
   Every dashboard page asks for the login configured on the Imison instance
   (`username` and `password`): the login page at `<path>/login` signs in, and
@@ -70,6 +72,7 @@ defmodule Imison.Web.Router do
           session: Router.__session__(opts, dashboard_path) do
           live "/", Imison.Web.ErrorsLive, :index, as: opts[:as]
           live "/errors/:id", Imison.Web.ErrorLive, :show, as: opts[:as]
+          live "/notifications", Imison.Web.NotificationsLive, :index, as: opts[:as]
         end
       end
     end

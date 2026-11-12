@@ -34,6 +34,31 @@ defmodule Imison.Notifications do
     )
   end
 
+  @spec channel_setting(Config.t(), String.t()) :: ChannelSetting.t() | nil
+  def channel_setting(%Config{repo: repo, prefix: prefix}, type) do
+    ChannelSetting
+    |> from(as: :channel)
+    |> where([channel: channel], channel.type == ^type)
+    |> repo.one(prefix: prefix)
+  end
+
+  @spec put_channel_and_rules(Config.t(), module(), %{config: map(), rules: %{Rule.trigger() => boolean()}}) ::
+          {:ok, ChannelSetting.t()} | {:error, {:invalid_config, keyword()}}
+  def put_channel_and_rules(%Config{repo: repo} = conf, channel_module, %{config: channel_config, rules: rules}) do
+    with :ok <- validate_channel_config(channel_module, channel_config) do
+      repo.transact(fn ->
+        store_channel_and_rules(conf, channel_module.type(), %{config: channel_config, rules: rules})
+      end)
+    end
+  end
+
+  @spec send_test(Config.t(), module(), map()) :: :ok | {:error, {:invalid_config, keyword()}} | {:error, term()}
+  def send_test(%Config{} = conf, channel_module, channel_config) do
+    with :ok <- validate_channel_config(channel_module, channel_config) do
+      attempt_delivery(conf, %{module: channel_module, config: channel_config}, Message.test())
+    end
+  end
+
   @spec rule_enabled?(Config.t(), Rule.trigger()) :: boolean()
   def rule_enabled?(%Config{repo: repo, prefix: prefix}, trigger) do
     Rule
@@ -74,13 +99,25 @@ defmodule Imison.Notifications do
     |> repo.all(prefix: prefix)
   end
 
-  defp deliver(%Config{} = conf, %{setting: setting} = channel, %Message{} = message) do
-    outcome = delivery_outcome(conf, channel, message)
+  defp store_channel_and_rules(conf, type, %{config: channel_config, rules: rules}) do
+    {:ok, channel} = put_channel(conf, type, %{enabled: true, config: channel_config})
+    Enum.each(rules, fn {trigger, enabled} -> {:ok, _rule} = put_rule(conf, trigger, enabled) end)
+    {:ok, channel}
+  end
+
+  defp validate_channel_config(channel_module, channel_config) do
+    with {:error, reasons} <- channel_module.validate_config(channel_config) do
+      {:error, {:invalid_config, reasons}}
+    end
+  end
+
+  defp deliver(%Config{} = conf, %{module: module, setting: setting}, %Message{} = message) do
+    outcome = attempt_delivery(conf, %{module: module, config: setting.config}, message)
     record_delivery(conf, setting, %{message: message, status: Delivery.status(outcome)})
   end
 
-  defp delivery_outcome(conf, %{module: module, setting: setting}, message) do
-    with {:error, reason} <- module.deliver(message, setting.config, conf) do
+  defp attempt_delivery(conf, %{module: module, config: channel_config}, message) do
+    with {:error, reason} <- module.deliver(message, channel_config, conf) do
       FailureLog.error(delivery_failure(module), %{kind: :error, reason: reason, stacktrace: []})
       {:error, reason}
     end

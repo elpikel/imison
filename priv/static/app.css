@@ -328,6 +328,7 @@ code, pre, .mono { font-family: var(--font-code); font-size: 0.862em; }
 .field + .field { margin-top: 18px; }
 .field__label { font-size: 13.5px; font-weight: 600; }
 .field__hint { font-size: 13px; color: var(--ink-2); }
+.field__error { font-size: 13px; color: var(--danger); }
 .input, .textarea {
   width: 100%; height: 34px; padding: 0 11px;
   border: 0; border-radius: var(--radius-s);

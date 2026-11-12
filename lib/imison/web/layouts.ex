@@ -35,11 +35,13 @@ defmodule Imison.Web.Layouts do
   end
 
   @doc """
-  The top bar with the main navigation, the Live indicator when `live` is
-  true, and the Sign out button, and the page below it, headed by the
+  The top bar with the main navigation (Errors and Notifications, `current`
+  marking the page's own link), the Live indicator when `live` is true, and
+  the Sign out button, and the page below it, headed by the
   `info` and `error` flash messages.
   """
   attr(:dashboard_path, :string, required: true)
+  attr(:current, :atom, values: [:errors, :notifications], default: :errors)
   attr(:flash, :map, default: %{})
   attr(:live, :boolean, default: false)
   slot(:inner_block, required: true)
@@ -62,7 +64,16 @@ defmodule Imison.Web.Layouts do
         </svg>Imison
       </.link>
       <nav class="nav" aria-label="Main">
-        <.link class="nav__link" navigate={@dashboard_path} aria-current="page">Errors</.link>
+        <.link class="nav__link" navigate={@dashboard_path} aria-current={current_page(@current, :errors)}>
+          Errors
+        </.link>
+        <.link
+          class="nav__link"
+          navigate={Paths.notifications(@dashboard_path)}
+          aria-current={current_page(@current, :notifications)}
+        >
+          Notifications
+        </.link>
       </nav>
       <div class="topbar__end">
         <span :if={@live} class="live" title="Connected. New events appear without reloading.">
@@ -80,4 +91,7 @@ defmodule Imison.Web.Layouts do
     </main>
     """
   end
+
+  defp current_page(current, current), do: "page"
+  defp current_page(_current, _link), do: nil
 end

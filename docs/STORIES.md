@@ -120,7 +120,7 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want an email when a resolved error comes back, so that I know a fix did not hold.
   Done when: a regression sends one email marked as a returning error.
 
-- [ ] **NOT-03 Send a test email** · needs: NOT-01, AUTH-02
+- [x] **NOT-03 Send a test email** · needs: NOT-01, AUTH-02
   As a developer, I want to send a test email, so that I know delivery works before I rely on it.
   Done when: the Notifications screen sets recipients and enables rules, and a "send test" action delivers or shows the mailer's error. Screen: `docs/design/notifications.html`.
 
