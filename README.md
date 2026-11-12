@@ -217,11 +217,49 @@ The email is plain text: the subject is `[Imison] New error: <kind> in <location
 
 With "Daily summary" switched on (off by default), one email goes out once 08:00 UTC has passed, `[Imison] Daily summary for <date>`, covering the previous UTC day in three sections: "New errors" (first seen that day), "Came back" (resolved errors that came back that day) and "Most frequent" (the five errors that occurred most that day). Each line has the error's kind, message, that day's number of occurrences, location and, with `dashboard_url`, its link; a section lists at most 20 errors and then says how many more there were, with the dashboard's link. Muted errors are listed too: the summary isn't an alert. A day with nothing in any section sends nothing. However many nodes run, each day's summary is sent once per channel. Switching it on at any time of the day sends the previous day's summary within a minute, if it wasn't sent yet.
 
-Set the recipients and rules on the dashboard's Notifications screen (`<path>/notifications`, linked from the top bar): enter the addresses separated by commas or new lines, switch "A new error appears", "A resolved error comes back", "An error keeps happening" and "Daily summary" on or off, and save. Each address must look like `local@domain` (the domain isn't looked up); an invalid one is named under the field and nothing is saved. Saving stores the email channel, enabled, and every rule in one transaction. "Send test email" sends `[Imison] Test email` to the addresses in the form (saved or not) right away and shows "Test email sent to …" or the mailer's error (a mailer that raises, or a missing `mailer` or `from`, shows an error too and is logged); a test email is not recorded in `imison_deliveries`. The screen shows the configured mailer and sender, or how to set them. When the email channel isn't in `channels` (the host doesn't depend on Swoosh), the screen says email isn't available and how to enable it.
+Set up channels and rules on the dashboard's Notifications screen (`<path>/notifications`, linked from the top bar). It shows one panel per module in `channels`, each with its settings, a switch that turns the channel on or off, "Save changes" and "Send test", and below them one set of rules, "Send a notification when": "A new error appears", "A resolved error comes back", "An error keeps happening" and "Daily summary", saved with "Save rules". The rules apply to every channel that's on; they aren't per channel. On the Email panel, enter the addresses separated by commas or new lines, switch it on and save. Each address must look like `local@domain` (the domain isn't looked up); an invalid one is named under the field and nothing is saved. Saving a panel stores that channel's row, on or off, with its settings; a channel never saved is off. "Send test" sends a test message (for email, `[Imison] Test email`) through that channel alone with the panel's values (saved or not) right away and shows "Test sent through Email." or the channel's error (a mailer that raises, or a missing `mailer` or `from`, shows an error too and is logged); a test is not recorded in `imison_deliveries`. The Email panel shows the configured mailer and sender, or how to set them. When `channels` is empty (by default, when the host doesn't depend on Swoosh), the screen says email isn't available and how to enable it.
 
-Nothing is sent until recipients are saved, or when the trigger's rule (`new`, `regression`, `still_happening` or `digest`) is switched off (a trigger never saved is on for `new` and `regression`, off for `still_happening` and `digest`). The settings live in `imison_channels` (one row per channel type) and `imison_rules`. Emails are sent in the background under Imison's own `Task.Supervisor`, so a slow mailer never holds up capture. Each attempt is recorded in `imison_deliveries` as `sent` or `failed` (a reminder also with its hour as `period`, a daily summary with no error and its day as `period`); a mailer that returns an error or raises (or a missing `mailer` or `from`) is logged under the `:imison` logger domain, and the error is recorded as usual.
+Nothing is sent through a channel until it is saved switched on with valid settings, or when the trigger's rule (`new`, `regression`, `still_happening` or `digest`) is switched off (a trigger never saved is on for `new` and `regression`, off for `still_happening` and `digest`). The settings live in `imison_channels` (one row per channel type) and `imison_rules`. Emails are sent in the background under Imison's own `Task.Supervisor`, so a slow mailer never holds up capture. Each attempt is recorded in `imison_deliveries` as `sent` or `failed` (a reminder also with its hour as `period`, a daily summary with no error and its day as `period`); a mailer that returns an error or raises (or a missing `mailer` or `from`) is logged under the `:imison` logger domain, and the error is recorded as usual.
 
-`channels` lists the channel modules (default `[Imison.Notifications.Channels.Email]`, or `[]` when the host doesn't depend on Swoosh). A module listed there must implement the `Imison.Notifications.Channel` behaviour (`type/0`, `validate_config/1`, `deliver/3`), or Imison refuses to start. Besides messages about one error, `deliver/3` receives the daily summary when "Daily summary" is on: an `Imison.Notifications.Message` with `trigger: :digest`, its error fields `nil` and `summary` set; a channel must render it or skip it by returning `:ok`.
+`channels` lists the channel modules (default `[Imison.Notifications.Channels.Email]`, or `[]` when the host doesn't depend on Swoosh). A module listed there must implement the `Imison.Notifications.Channel` behaviour (`type/0`, `validate_config/1`, `deliver/3`), or Imison refuses to start. Besides messages about one error, `deliver/3` receives the daily summary when "Daily summary" is on: an `Imison.Notifications.Message` with `trigger: :digest`, its error fields `nil` and `summary` set; a channel must render it or skip it by returning `:ok`. It also receives the test message (`trigger: :test`, error fields `nil`) when "Send test" is clicked on its panel.
+
+#### Custom channels
+
+A host app adds a channel by writing a module that implements `Imison.Notifications.Channel` and listing it in `channels`; it gets its own panel on the Notifications screen and receives every notification the rules allow, as the email channel does. Three optional callbacks shape its panel:
+
+- `label/0`: the panel's title (default: `type/0`).
+- `config_fields/0`: the settings the panel asks for, in order (default: none), each `%{name: "service_url", label: "Service URL", type: :url, hint: "Where alerts go."}` (`hint` optional). `type` is `:recipients` (a textarea of values separated by commas or new lines, stored as a list of strings), `:text` or `:url` (an input, stored as a trimmed string, removed when blank) or `:secret` (a password input, stored as a trimmed string).
+- `describe/1`: a line under the title, given the instance's config (default: none).
+
+```elixir
+defmodule MyApp.PagerChannel do
+  @behaviour Imison.Notifications.Channel
+
+  @impl true
+  def type, do: "pager"
+
+  @impl true
+  def label, do: "Pager"
+
+  @impl true
+  def config_fields do
+    [
+      %{name: "service_url", label: "Service URL", type: :url},
+      %{name: "token", label: "API token", type: :secret}
+    ]
+  end
+
+  @impl true
+  def validate_config(%{"service_url" => "https://" <> _, "token" => _token}), do: :ok
+  def validate_config(_config), do: {:error, service_url: "must start with https://", token: "can't be blank"}
+
+  @impl true
+  def deliver(%Imison.Notifications.Message{trigger: :digest}, _config, _imison_config), do: :ok
+  def deliver(message, %{"service_url" => url, "token" => token}, _imison_config), do: MyApp.Pager.alert(url, token, message)
+end
+```
+
+The settings are stored in `imison_channels.config` (jsonb) under the field names, in the row for the channel's `type/0`, and handed to `validate_config/1` and `deliver/3` as that map with string keys. Saving a panel calls `validate_config/1` first: its `{:error, [field: "reason"]}` reasons are shown under the fields with those names (others under the panel's fields) and nothing is stored. A channel is used only while its row is on and its stored settings pass `validate_config/1`. A `:secret` field is never shown back: the panel says a value is set, and leaving it blank keeps the stored value, both when saving and when sending a test. Settings in the stored row that the fields don't list are kept when the panel is saved.
 
 ### Retention
 
