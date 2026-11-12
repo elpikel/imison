@@ -3,7 +3,7 @@ defmodule Imison.Web.NotificationsLive do
   The notifications screen (`docs/design/notifications.html`): the email
   channel's recipients, the mailer and sender from the instance's config,
   and a switch for each rule that sends email today (a new error, a resolved
-  error that comes back, an error that keeps happening).
+  error that comes back, an error that keeps happening, the daily summary).
 
   Saving stores the channel, enabled, with the recipients and every switch's
   rule, all or nothing; recipients are separated by commas or new lines and
@@ -25,7 +25,8 @@ defmodule Imison.Web.NotificationsLive do
   @rules [
     %{trigger: :new, title: "A new error appears", hint: "The first time an error is seen."},
     %{trigger: :regression, title: "A resolved error comes back", hint: "You marked it resolved and it happened again."},
-    %{trigger: :still_happening, title: "An error keeps happening", hint: "At most one reminder per error per hour."}
+    %{trigger: :still_happening, title: "An error keeps happening", hint: "At most one reminder per error per hour."},
+    %{trigger: :digest, title: "Daily summary", hint: "One email at 08:00 UTC with yesterday's counts."}
   ]
 
   @impl Phoenix.LiveView

@@ -29,7 +29,26 @@ defmodule Imison.Errors do
           newer_id: integer() | nil
         }
 
+  @type summary_line :: %{
+          error_id: pos_integer(),
+          kind: String.t(),
+          message: String.t(),
+          location: String.t() | nil,
+          count: non_neg_integer()
+        }
+
+  @type summary_section :: %{lines: [summary_line()], total: non_neg_integer()}
+
+  @type daily_summary :: %{
+          date: Date.t(),
+          new: summary_section(),
+          came_back: summary_section(),
+          most_frequent: summary_section()
+        }
+
   @listed_errors_limit 100
+  @summary_section_limit 20
+  @most_frequent_limit 5
   @heat_strip_hours 24
   @largest_id 9_223_372_036_854_775_807
   @change_broadcast_failure "Imison failed to broadcast a change to errors"
@@ -156,6 +175,41 @@ defmodule Imison.Errors do
       hourly_counts: delete_in_batches(conf, %{schema: HourlyCount, timestamp: :hour, cutoff: cutoff}, 0)
     }
   end
+
+  @spec daily_summary(Config.t(), Date.t()) :: daily_summary()
+  def daily_summary(%Config{} = conf, %Date{} = date) do
+    day = %{start: start_of_utc_day(date), end: date |> Date.add(1) |> start_of_utc_day()}
+
+    %{
+      date: date,
+      new:
+        day
+        |> errors_with_day_count(:left)
+        |> where([error: error], error.first_seen_at >= ^day.start and error.first_seen_at < ^day.end)
+        |> summary_section(conf, %{
+          order: [asc: dynamic([error: error], error.first_seen_at), asc: dynamic([error: error], error.id)],
+          limit: @summary_section_limit
+        }),
+      came_back:
+        day
+        |> errors_with_day_count(:left)
+        |> where([error: error], error.regressed_at >= ^day.start and error.regressed_at < ^day.end)
+        |> summary_section(conf, %{
+          order: [asc: dynamic([error: error], error.regressed_at), asc: dynamic([error: error], error.id)],
+          limit: @summary_section_limit
+        }),
+      most_frequent:
+        day
+        |> errors_with_day_count(:inner)
+        |> summary_section(conf, %{
+          order: [desc: dynamic([day_count: day_count], day_count.count), asc: dynamic([error: error], error.id)],
+          limit: @most_frequent_limit
+        })
+    }
+  end
+
+  @spec start_of_utc_day(Date.t()) :: DateTime.t()
+  def start_of_utc_day(%Date{} = date), do: DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
 
   defp database_id(id) when is_integer(id) and id in 1..@largest_id//1, do: id
 
@@ -420,6 +474,44 @@ defmodule Imison.Errors do
       line: frame.line,
       application: frame.application?
     }
+  end
+
+  defp errors_with_day_count(day, join_kind) do
+    Error
+    |> from(as: :error)
+    |> join(join_kind, [error: error], day_count in subquery(counts_in_day(day)),
+      on: day_count.error_id == error.id,
+      as: :day_count
+    )
+  end
+
+  defp summary_section(errors, %Config{repo: repo, prefix: prefix}, %{order: order, limit: limit}) do
+    %{
+      lines:
+        errors
+        |> order_by(^order)
+        |> limit(^limit)
+        |> select([error: error, day_count: day_count], %{
+          error_id: error.id,
+          kind: error.kind,
+          message: error.message,
+          location: error.location,
+          count: coalesce(day_count.count, 0)
+        })
+        |> repo.all(prefix: prefix),
+      total: errors |> select([error: error], count(error.id)) |> repo.one(prefix: prefix)
+    }
+  end
+
+  defp counts_in_day(%{start: day_start, end: day_end}) do
+    HourlyCount
+    |> from(as: :hourly_count)
+    |> where([hourly_count: hourly_count], hourly_count.hour >= ^day_start and hourly_count.hour < ^day_end)
+    |> group_by([hourly_count: hourly_count], hourly_count.error_id)
+    |> select([hourly_count: hourly_count], %{
+      error_id: hourly_count.error_id,
+      count: type(sum(hourly_count.count), :integer)
+    })
   end
 
   defp start_of_hour(datetime) do

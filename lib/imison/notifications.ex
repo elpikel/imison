@@ -5,6 +5,7 @@ defmodule Imison.Notifications do
 
   alias Imison.Capture.FailureLog
   alias Imison.Config
+  alias Imison.Errors
   alias Imison.Errors.Error
   alias Imison.Notifications.ChannelSetting
   alias Imison.Notifications.Delivery
@@ -82,6 +83,16 @@ defmodule Imison.Notifications do
     :ok
   end
 
+  @spec send_digest(Config.t(), Date.t()) :: :ok | :rule_off
+  def send_digest(%Config{} = conf, %Date{} = date) do
+    if rule_enabled?(conf, :digest) do
+      deliver_digest(conf, Errors.daily_summary(conf, date))
+      :ok
+    else
+      :rule_off
+    end
+  end
+
   @spec claim_delivery(Config.t(), %{
           channel_id: pos_integer(),
           error_id: pos_integer() | nil,
@@ -104,6 +115,21 @@ defmodule Imison.Notifications do
 
   defp claim_conflict_target(nil), do: {:unsafe_fragment, "(channel_id, trigger, period) WHERE error_id IS NULL"}
   defp claim_conflict_target(_error_id), do: [:channel_id, :error_id, :trigger, :period]
+
+  defp deliver_digest(_conf, %{new: %{total: 0}, came_back: %{total: 0}, most_frequent: %{total: 0}}), do: :quiet_day
+
+  defp deliver_digest(conf, %{date: date} = daily_summary) do
+    message = Message.digest(conf, daily_summary)
+
+    conf
+    |> usable_channels()
+    |> Enum.each(fn %{setting: setting} = channel ->
+      claim = %{channel_id: setting.id, error_id: nil, trigger: :digest, period: digest_period(date)}
+      deliver_once(conf, channel, %{claim: claim, message: message})
+    end)
+  end
+
+  defp digest_period(date), do: Errors.start_of_utc_day(date)
 
   defp usable_channels(%Config{channels: channel_modules} = conf) do
     settings_by_type = conf |> enabled_channel_settings(Enum.map(channel_modules, & &1.type())) |> Map.new(&{&1.type, &1})
@@ -146,9 +172,12 @@ defmodule Imison.Notifications do
     record_delivery(conf, setting, %{message: message, status: Delivery.status(outcome)})
   end
 
-  defp deliver_once_per_period(conf, %{module: module, setting: setting}, %{message: message, period: period}) do
+  defp deliver_once_per_period(conf, %{setting: setting} = channel, %{message: message, period: period}) do
     claim = %{channel_id: setting.id, error_id: message.error_id, trigger: message.trigger, period: period}
+    deliver_once(conf, channel, %{claim: claim, message: message})
+  end
 
+  defp deliver_once(conf, %{module: module, setting: setting}, %{claim: claim, message: message}) do
     with {:ok, delivery} <- claim_delivery(conf, claim) do
       outcome = attempt_delivery(conf, %{module: module, config: setting.config}, message)
       finish_delivery(conf, delivery, outcome)

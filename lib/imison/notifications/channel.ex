@@ -34,6 +34,12 @@ defmodule Imison.Notifications.Channel do
 
   Returns `{:error, reason}` when it fails; Imison logs it and records the
   delivery as failed. An exception is treated the same way.
+
+  Besides messages about one error, a channel receives the daily digest
+  (`trigger: :digest`) when the `digest` rule is on: its error fields are
+  `nil` and its `summary` is set (see `Imison.Notifications.Message`). A
+  channel must render it or skip it (return `:ok` without sending), and
+  must not assume a message's error fields are set.
   """
   @callback deliver(Message.t(), channel_config :: map(), Config.t()) :: :ok | {:error, term()}
 end

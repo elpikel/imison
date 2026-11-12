@@ -44,6 +44,59 @@ defmodule Imison.Notifications.Channels.EmailTest do
     refute_email_sent()
   end
 
+  test "a daily summary says which sections had no errors that day" do
+    conf = Config.new(repo: Repo, username: "admin", password: "secret", mailer: Mailer, from: "errors@example.com")
+    most_frequent = %{lines: [summary_line(count: 3)], total: 1}
+
+    message =
+      Message.digest(conf, %{date: ~D[2026-11-11], new: no_errors(), came_back: no_errors(), most_frequent: most_frequent})
+
+    assert :ok = Email.deliver(message, %{"recipients" => ["ops@example.com"]}, conf)
+
+    assert_received {:email, %Swoosh.Email{subject: "[Imison] Daily summary for 11 Nov 2026", text_body: body}}
+    assert body =~ ~r/New errors\nNone\.\n\nCame back\nNone\.\n\nMost frequent\n/
+    assert body =~ "ArgumentError: invalid order id"
+    assert body =~ "3 occurrences, MyApp.Orders.fetch/1 (lib/my_app/orders.ex:12)"
+    refute body =~ "more"
+  end
+
+  test "a daily summary section with more errors than it lists says how many more, with the dashboard link" do
+    conf =
+      Config.new(
+        repo: Repo,
+        username: "admin",
+        password: "secret",
+        mailer: Mailer,
+        from: "errors@example.com",
+        dashboard_url: "https://app.example.com/errors"
+      )
+
+    new = %{lines: Enum.map(1..20, &summary_line(error_id: &1)), total: 23}
+
+    message =
+      Message.digest(conf, %{date: ~D[2026-11-11], new: new, came_back: no_errors(), most_frequent: no_errors()})
+
+    assert :ok = Email.deliver(message, %{"recipients" => ["ops@example.com"]}, conf)
+
+    assert_received {:email, %Swoosh.Email{text_body: body}}
+    assert body =~ "https://app.example.com/errors/errors/20\nand 3 more: https://app.example.com/errors\n\nCame back"
+  end
+
+  defp no_errors, do: %{lines: [], total: 0}
+
+  defp summary_line(overrides) do
+    Map.merge(
+      %{
+        error_id: 7,
+        kind: "ArgumentError",
+        message: "invalid order id",
+        location: "MyApp.Orders.fetch/1 (lib/my_app/orders.ex:12)",
+        count: 1
+      },
+      Map.new(overrides)
+    )
+  end
+
   defp message(overrides) do
     struct!(
       %Message{

@@ -18,6 +18,7 @@ flowchart LR
       capture[Capture handlers] --> worker[Worker]
       worker --> notifier[Notifier]
       pruner[Pruner]
+      digest[Digest] --> notifier
     end
     repo[(Host Postgres<br/>imison_* tables)]
     pubsub[Host PubSub]
@@ -48,7 +49,7 @@ There is no separate service to host. Imison reuses what the host app already ha
 | Live updates | The host's `Phoenix.PubSub` | Dashboard updates across nodes |
 | Email | The host's Swoosh mailer | No second set of mail credentials |
 | Auth | Built-in session login checked against config | Works in production without depending on the host's user system |
-| Background work | `Task.Supervisor` and a pruner process inside the Imison supervisor | No hard dependency on Oban |
+| Background work | `Task.Supervisor`, a pruner process and a daily digest process inside the Imison supervisor | No hard dependency on Oban |
 
 ## Package structure
 
@@ -60,7 +61,7 @@ lib/imison/migration.ex          versioned up/down
 lib/imison/capture/              logger handler, telemetry handlers, worker
 lib/imison/errors/               schemas, fingerprint, upsert
 lib/imison/pruner.ex             pruner process (retention)
-lib/imison/notifications/        notifier, Channel behaviour, Email channel
+lib/imison/notifications/        notifier, daily digest process, Channel behaviour, Email channel
 lib/imison/web/router.ex         imison_dashboard macro
 lib/imison/web/live/             error list, error detail, notifications, login
 lib/mix/tasks/imison.install.ex  Igniter installer
@@ -199,7 +200,7 @@ config :my_app, Imison,
   channels: [Imison.Notifications.Channels.Email, MyApp.SlackChannel]
 ```
 
-`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release.
+`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The daily digest (`trigger: :digest`) is about no single error, so its error fields are `nil` and its `summary` holds the UTC `date`, `url` (the dashboard's error list, absent without `dashboard_url`) and three sections, `new`, `came_back` and `most_frequent`, each `%{lines: [...], total: n}`: at most 20 lines (5 for `most_frequent`), and `total` counting every error in the section that day so a channel can say how many it left out; each line has the error's id, kind, message, location, that day's occurrence `count` and `url`. `summary` is `nil` for every other message. Every channel receives digests and must render or skip them. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release.
 
 ## Configuration
 

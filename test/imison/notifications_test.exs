@@ -6,11 +6,14 @@ defmodule Imison.NotificationsTest do
   import Imison.Test.CaptureHelpers
   import Swoosh.TestAssertions
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Imison.Capture
+  alias Imison.Config
   alias Imison.Errors
   alias Imison.Errors.Error
   alias Imison.Notifications
   alias Imison.Notifications.Channels.Email
+  alias Imison.Notifications.ChannelSetting
   alias Imison.Notifications.Delivery
   alias Imison.Notifications.Rule
   alias Imison.Test.Mailer
@@ -552,6 +555,151 @@ defmodule Imison.NotificationsTest do
     assert [%Delivery{trigger: :regression, status: :sent}] = deliveries(error.id)
   end
 
+  test "with the digest rule on, a day's digest is emailed once as the daily summary for that day" do
+    conf = digest_config()
+    put_digest_email_channel(conf)
+    {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+    record_on(conf, ~U[2026-11-11 10:00:00.000000Z])
+
+    assert Notifications.send_digest(conf, ~D[2026-11-11]) == :ok
+
+    assert_email_sent(to: [{"", "ops@example.com"}], subject: "[Imison] Daily summary for 11 Nov 2026")
+    refute_email_sent()
+  end
+
+  test "a sent digest is recorded with its channel, no error, the digest trigger, the day as its period and sent" do
+    conf = digest_config()
+    channel = put_digest_email_channel(conf)
+    {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+    record_on(conf, ~U[2026-11-11 10:00:00.000000Z])
+
+    Notifications.send_digest(conf, ~D[2026-11-11])
+
+    channel_id = channel.id
+
+    assert [
+             %Delivery{
+               channel_id: ^channel_id,
+               error_id: nil,
+               trigger: :digest,
+               period: ~U[2026-11-11 00:00:00Z],
+               status: :sent,
+               sent_at: %DateTime{}
+             }
+           ] = Repo.all(Delivery)
+  end
+
+  test "the digest email lists the day's new errors, the errors that came back and the most frequent with counts and links" do
+    conf = digest_config(dashboard_url: "https://app.example.com/errors")
+    put_digest_email_channel(conf)
+    {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+    new_error = record_on(conf, ~U[2026-11-11 10:00:00.000000Z])
+    came_back = record_on(conf, ~U[2026-11-01 10:00:00.000000Z])
+    record_again(conf, came_back, ~U[2026-11-11 11:00:00.000000Z])
+    record_again(conf, came_back, ~U[2026-11-11 12:00:00.000000Z])
+    set_regressed_at(came_back, ~U[2026-11-11 11:00:00.000000Z])
+
+    Notifications.send_digest(conf, ~D[2026-11-11])
+
+    assert_received {:email, %Swoosh.Email{text_body: body}}
+    [_head, new_section] = String.split(body, "New errors", parts: 2)
+    [new_section, came_back_section] = String.split(new_section, "Came back", parts: 2)
+    [came_back_section, most_frequent_section] = String.split(came_back_section, "Most frequent", parts: 2)
+    assert new_section =~ new_error.message
+    assert new_section =~ "https://app.example.com/errors/errors/#{new_error.id}"
+    refute new_section =~ came_back.message
+    assert came_back_section =~ came_back.message
+    assert came_back_section =~ "https://app.example.com/errors/errors/#{came_back.id}"
+    assert most_frequent_section =~ ~r/#{came_back.message}.*2 occurrences.*#{new_error.message}.*1 occurrence/s
+  end
+
+  test "a muted error is still listed in the digest" do
+    conf = digest_config()
+    put_digest_email_channel(conf)
+    {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+    error = record_on(conf, ~U[2026-11-11 10:00:00.000000Z])
+    {:ok, 1} = Errors.set_muted(conf, [error.id], true)
+
+    Notifications.send_digest(conf, ~D[2026-11-11])
+
+    assert_received {:email, %Swoosh.Email{text_body: body}}
+    assert body =~ error.message
+  end
+
+  test "a day when nothing happened sends no digest and claims nothing" do
+    conf = digest_config()
+    put_digest_email_channel(conf)
+    {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+    record_on(conf, ~U[2026-11-10 10:00:00.000000Z])
+
+    assert Notifications.send_digest(conf, ~D[2026-11-11]) == :ok
+
+    refute_email_sent()
+    assert Repo.all(Delivery) == []
+  end
+
+  test "without a stored digest rule no digest is sent and nothing is claimed" do
+    conf = digest_config()
+    put_digest_email_channel(conf)
+    record_on(conf, ~U[2026-11-11 10:00:00.000000Z])
+
+    assert Notifications.send_digest(conf, ~D[2026-11-11]) == :rule_off
+
+    refute_email_sent()
+    assert Repo.all(Delivery) == []
+  end
+
+  test "a day's digest sent a second time sends nothing more" do
+    conf = digest_config()
+    put_digest_email_channel(conf)
+    {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+    record_on(conf, ~U[2026-11-11 10:00:00.000000Z])
+    Notifications.send_digest(conf, ~D[2026-11-11])
+    assert_email_sent()
+
+    assert Notifications.send_digest(conf, ~D[2026-11-11]) == :ok
+
+    refute_email_sent()
+    assert [%Delivery{trigger: :digest}] = Repo.all(Delivery)
+  end
+
+  test "a digest the mailer fails to send is logged under the imison domain and recorded as failed for its day" do
+    conf = digest_config(mailer: FailingMailer)
+    put_digest_email_channel(conf)
+    {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+    record_on(conf, ~U[2026-11-11 10:00:00.000000Z])
+
+    log = capture_log([metadata: [:domain]], fn -> assert Notifications.send_digest(conf, ~D[2026-11-11]) == :ok end)
+
+    assert log =~ ~r/domain=elixir\.imison \[error\] Imison failed to deliver a notification.*smtp_unavailable/s
+    assert [%Delivery{trigger: :digest, period: ~U[2026-11-11 00:00:00Z], status: :failed}] = Repo.all(Delivery)
+  end
+
+  test "processes on their own connections sending the same day's digest at once send one email and record one delivery" do
+    set_swoosh_global()
+    conf = digest_config()
+    senders = 20
+    kind = "Imison.DigestConcurrencyError#{System.unique_integer([:positive])}"
+    clean_up_committed_digest(kind)
+
+    Sandbox.unboxed_run(Repo, fn ->
+      put_digest_email_channel(conf)
+      {:ok, _rule} = Notifications.put_rule(conf, :digest, true)
+      record_on(conf, ~U[2026-11-11 10:00:00.000000Z], kind)
+    end)
+
+    1..senders
+    |> Task.async_stream(
+      fn _sender -> Sandbox.unboxed_run(Repo, fn -> Notifications.send_digest(conf, ~D[2026-11-11]) end) end,
+      max_concurrency: senders
+    )
+    |> Enum.each(fn {:ok, :ok} -> :ok end)
+
+    assert_email_sent(subject: "[Imison] Daily summary for 11 Nov 2026")
+    refute_email_sent()
+    assert [%Delivery{trigger: :digest, status: :sent}] = Sandbox.unboxed_run(Repo, fn -> Repo.all(Delivery) end)
+  end
+
   def report_delivery_insert(_event, _measurements, %{source: "imison_deliveries", query: "INSERT" <> _rest}, test_pid),
     do: send(test_pid, :delivery_insert)
 
@@ -608,6 +756,52 @@ defmodule Imison.NotificationsTest do
     |> from(as: :error)
     |> where([error: error], error.message == ^message)
     |> Repo.one!()
+  end
+
+  defp digest_config(opts \\ []) do
+    [repo: Repo, username: "admin", password: "secret", mailer: Mailer, from: "errors@example.com"]
+    |> Keyword.merge(opts)
+    |> Config.new()
+  end
+
+  defp put_digest_email_channel(conf) do
+    {:ok, channel} =
+      Notifications.put_channel(conf, Email.type(), %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    channel
+  end
+
+  defp record_on(conf, occurred_at, kind \\ "Imison.DigestError#{System.unique_integer([:positive])}") do
+    {:ok, error} =
+      Errors.record(conf, %{kind: kind, message: unique_message(), stacktrace: [], occurred_at: occurred_at})
+
+    error
+  end
+
+  defp record_again(conf, %Error{} = error, occurred_at) do
+    {:ok, _error} =
+      Errors.record(conf, %{kind: error.kind, message: error.message, stacktrace: [], occurred_at: occurred_at})
+  end
+
+  defp set_regressed_at(%Error{id: error_id}, regressed_at) do
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.id == ^error_id)
+    |> Repo.update_all(set: [regressed_at: regressed_at])
+  end
+
+  defp clean_up_committed_digest(kind) do
+    on_exit(fn ->
+      Sandbox.unboxed_run(Repo, fn ->
+        Error |> from(as: :error) |> where([error: error], error.kind == ^kind) |> Repo.delete_all()
+        Rule |> from(as: :rule) |> where([rule: rule], rule.trigger == :digest) |> Repo.delete_all()
+
+        ChannelSetting
+        |> from(as: :channel)
+        |> where([channel: channel], channel.type == ^Email.type())
+        |> Repo.delete_all()
+      end)
+    end)
   end
 
   defp deliveries(error_id) do
