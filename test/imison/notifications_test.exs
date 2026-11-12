@@ -7,6 +7,7 @@ defmodule Imison.NotificationsTest do
   import Swoosh.TestAssertions
 
   alias Imison.Capture
+  alias Imison.Errors
   alias Imison.Errors.Error
   alias Imison.Notifications
   alias Imison.Notifications.Channels.Email
@@ -244,6 +245,71 @@ defmodule Imison.NotificationsTest do
     wait_for_recording(name)
     assert [%{occurrence_count: 1}] = recorded(message)
     assert_receive {:delivering, _task}
+  end
+
+  test "a resolved error that comes back sends one regression notification" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :resolved)
+    channel = put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    channel_id = channel.id
+    assert_email_sent(to: [{"", "ops@example.com"}])
+    refute_email_sent()
+    assert [%Delivery{channel_id: ^channel_id, trigger: :regression, status: :sent}] = deliveries(error.id)
+  end
+
+  test "a resolved error that comes back sends nothing when the regression rule is stored as disabled" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :resolved)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+    {:ok, _rule} = Notifications.put_rule(Imison.config(name), :regression, false)
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    refute_email_sent()
+    assert deliveries(error.id) == []
+  end
+
+  test "an ignored error that happens again sends nothing" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :ignored)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    refute_email_sent()
+    assert deliveries(error.id) == []
+  end
+
+  test "a resolved error marked unresolved again by hand sends nothing when it happens again" do
+    set_swoosh_global()
+    name = start_mailing_imison()
+    error = capture_and_set_status(name, :resolved)
+    {:ok, 1} = Errors.set_status(Imison.config(name), [error.id], :unresolved)
+    put_email_channel(name, %{enabled: true, config: %{"recipients" => ["ops@example.com"]}})
+
+    Capture.capture(name, %{error.event | occurred_at: DateTime.utc_now()})
+
+    wait_for_worker(name)
+    refute_email_sent()
+    assert deliveries(error.id) == []
+  end
+
+  defp capture_and_set_status(name, status) do
+    event = new_error_event()
+    Capture.capture(name, event)
+    wait_for_worker(name)
+    %Error{id: error_id} = recorded_error(event.message)
+    {:ok, 1} = Errors.set_status(Imison.config(name), [error_id], status)
+    %{id: error_id, event: event}
   end
 
   defp start_mailing_imison(opts \\ []) do

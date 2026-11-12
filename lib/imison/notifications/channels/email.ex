@@ -51,6 +51,7 @@ if Code.ensure_loaded?(Swoosh.Email) do
     defp subject(%Message{} = message), do: "[Imison] #{headline(message)}: #{message.kind} in #{message.location}"
 
     defp headline(%Message{trigger: :new}), do: "New error"
+    defp headline(%Message{trigger: :regression}), do: "Regression"
 
     defp text_body(%Message{} = message) do
       [
