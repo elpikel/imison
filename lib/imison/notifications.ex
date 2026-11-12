@@ -82,6 +82,29 @@ defmodule Imison.Notifications do
     :ok
   end
 
+  @spec claim_delivery(Config.t(), %{
+          channel_id: pos_integer(),
+          error_id: pos_integer() | nil,
+          trigger: Rule.trigger(),
+          period: DateTime.t()
+        }) :: {:ok, Delivery.t()} | :already_claimed
+  def claim_delivery(%Config{repo: repo, prefix: prefix}, %{
+        channel_id: channel_id,
+        error_id: error_id,
+        trigger: trigger,
+        period: %DateTime{} = period
+      }) do
+    %Delivery{channel_id: channel_id, error_id: error_id, trigger: trigger, period: period, status: :pending}
+    |> repo.insert!(prefix: prefix, on_conflict: :nothing, conflict_target: claim_conflict_target(error_id))
+    |> case do
+      %Delivery{id: nil} -> :already_claimed
+      %Delivery{} = delivery -> {:ok, delivery}
+    end
+  end
+
+  defp claim_conflict_target(nil), do: {:unsafe_fragment, "(channel_id, trigger, period) WHERE error_id IS NULL"}
+  defp claim_conflict_target(_error_id), do: [:channel_id, :error_id, :trigger, :period]
+
   defp usable_channels(%Config{channels: channel_modules} = conf) do
     settings_by_type = conf |> enabled_channel_settings(Enum.map(channel_modules, & &1.type())) |> Map.new(&{&1.type, &1})
 
@@ -124,9 +147,11 @@ defmodule Imison.Notifications do
   end
 
   defp deliver_once_per_period(conf, %{module: module, setting: setting}, %{message: message, period: period}) do
-    with {:ok, delivery} <- claim_delivery(conf, setting, %{message: message, period: period}) do
+    claim = %{channel_id: setting.id, error_id: message.error_id, trigger: message.trigger, period: period}
+
+    with {:ok, delivery} <- claim_delivery(conf, claim) do
       outcome = attempt_delivery(conf, %{module: module, config: setting.config}, message)
-      finish_delivery(conf, delivery, Delivery.status(outcome))
+      finish_delivery(conf, delivery, outcome)
     end
   end
 
@@ -159,31 +184,9 @@ defmodule Imison.Notifications do
     )
   end
 
-  defp claim_delivery(%Config{repo: repo, prefix: prefix}, %ChannelSetting{id: channel_id}, %{
-         message: message,
-         period: period
-       }) do
-    %Delivery{
-      channel_id: channel_id,
-      error_id: message.error_id,
-      trigger: message.trigger,
-      period: period,
-      status: :pending
-    }
-    |> repo.insert!(
-      prefix: prefix,
-      on_conflict: :nothing,
-      conflict_target: [:channel_id, :error_id, :trigger, :period]
-    )
-    |> case do
-      %Delivery{id: nil} -> :already_claimed
-      %Delivery{} = delivery -> {:ok, delivery}
-    end
-  end
-
-  defp finish_delivery(%Config{repo: repo, prefix: prefix}, %Delivery{} = delivery, status) do
+  defp finish_delivery(%Config{repo: repo, prefix: prefix}, %Delivery{} = delivery, outcome) do
     delivery
-    |> Ecto.Changeset.change(status: status, sent_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(status: Delivery.status(outcome), sent_at: DateTime.utc_now())
     |> repo.update!(prefix: prefix)
   end
 end

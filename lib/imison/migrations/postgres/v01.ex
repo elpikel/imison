@@ -88,6 +88,12 @@ defmodule Imison.Migrations.Postgres.V01 do
     end
 
     create_if_not_exists unique_index(:imison_deliveries, [:channel_id, :error_id, :trigger, :period], prefix: prefix)
+
+    digest_claim_index =
+      unique_index(:imison_deliveries, [:channel_id, :trigger, :period], where: "error_id IS NULL", prefix: prefix)
+
+    create_if_not_exists digest_claim_index
+
     create_if_not_exists index(:imison_deliveries, [:error_id], prefix: prefix)
 
     create_if_not_exists table(:imison_login_failures, primary_key: false, prefix: prefix) do
