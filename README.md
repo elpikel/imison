@@ -6,7 +6,7 @@ An error tracker you add to a Phoenix app as a library, installed the way Oban i
 
 ## Stack
 
-Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it) and `igniter` (`mix imison.install` makes the changes with it and prints them as manual steps without it; the host adds it, usually `only: [:dev]`). Test only: `phx_new` (the installer's tests generate a Phoenix project with it) and `bandit` (a local HTTP server the webhook tests post to). The webhook channel uses OTP's `:inets` (`:httpc`), `:ssl` and `:public_key`, listed in `extra_applications`. Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
+Elixir 1.20, plain Mix library. Dependencies: `ecto_sql` and `postgrex` (Imison uses the host's repo), `telemetry` (Phoenix and Oban capture) and `phoenix_live_view` (the dashboard; brings `phoenix` and `phoenix_html`), required as with Oban Web. Optional: `swoosh` (the email channel; compiled only when the host depends on it) and `igniter` (`mix imison.install` makes the changes with it and prints them as manual steps without it; the host adds it, usually `only: [:dev]`). Test only: `phx_new` (the installer's tests generate a Phoenix project with it) and `bandit` (a local HTTP server the webhook and Slack tests post to). The webhook and Slack channels use OTP's `:inets` (`:httpc`), `:ssl` and `:public_key`, listed in `extra_applications`. Oban is not a dependency: Imison handles its job-failure telemetry event when the host runs Oban.
 
 ## Installation
 
@@ -306,6 +306,26 @@ end
 ```
 
 A 2xx answer counts as sent. Any other status (redirects aren't followed) fails the delivery with `{:http_status, status}`; a connection that is refused, fails TLS verification, takes longer than 5 seconds to open or longer than 5 more seconds to answer fails it with the reason, so one delivery takes at most about 10 seconds. Deliveries run in the background, but "Send test" waits for the answer, so the screen is busy for up to those 10 seconds with a slow endpoint. A failed delivery is logged and recorded as `failed` like any other; the logged reason never contains the URL or the secret. Requests go through OTP's `:httpc` (default profile, with every option set per request) with TLS peer and hostname verification against the system's CA certificates (`:public_key.cacerts_get/0`); Imison adds no HTTP client dependency.
+
+#### Slack
+
+`Imison.Notifications.Channels.Slack` posts each notification to a Slack channel through an incoming webhook. To set it up:
+
+1. In Slack, create an app (or open an existing one) at <https://api.slack.com/apps>, turn on **Incoming Webhooks**, click **Add New Webhook to Workspace** and pick the channel. Copy the webhook URL (`https://hooks.slack.com/services/...`).
+2. Add the module to `channels` (it isn't there by default):
+
+   ```elixir
+   {Imison,
+    repo: MyApp.Repo,
+    # ...
+    channels: [Imison.Notifications.Channels.Email, Imison.Notifications.Channels.Slack]}
+   ```
+
+3. On the Notifications screen paste the URL into the Slack panel's "Incoming webhook URL", switch it on and save. "Send test" posts a test message to the channel.
+
+The URL must start with `https://hooks.slack.com/`; anything else is refused under the field. The whole URL is the credential, so it's a secret field: never shown back on the screen (blank keeps it, "Remove" clears it) and never named in a logged failure.
+
+Each message is Slack `mrkdwn` text: a bold headline ("New error", "Came back" with when it came back, "Still happening" with when it was last seen), `*kind*: message`, the location in backticks, the occurrence count and first seen time, and an "Open in Imison" link when `dashboard_url` is set. The daily summary lists its three sections ("New errors", "Came back", "Most frequent"), one line per error with that day's count and its link, ending a capped section with "and N more". The error's kind, message and location are cut to their first line and at most 300 characters (ending "…"), so a long exception message can't push the counts and link out of view; `&`, `<` and `>` in them are escaped, so an error message can't mention `@channel` or post a link. A non-2xx answer fails the delivery with `{:http_status, status}`, with the same timeouts as the webhook channel.
 
 ### Retention
 
