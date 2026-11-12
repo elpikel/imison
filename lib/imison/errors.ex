@@ -3,7 +3,9 @@ defmodule Imison.Errors do
 
   import Ecto.Query
 
+  alias Imison.Capture.FailureLog
   alias Imison.Config
+  alias Imison.Errors.Broadcast
   alias Imison.Errors.Error
   alias Imison.Errors.Fingerprint
   alias Imison.Errors.Frame
@@ -22,6 +24,7 @@ defmodule Imison.Errors do
   @listed_errors_limit 100
   @heat_strip_hours 24
   @largest_id 9_223_372_036_854_775_807
+  @status_broadcast_failure "Imison failed to broadcast a status change"
 
   @spec list(Config.t(), status: atom(), search: String.t()) :: [Error.t()]
   def list(%Config{repo: repo, prefix: prefix}, opts) do
@@ -37,21 +40,18 @@ defmodule Imison.Errors do
   end
 
   @spec get(Config.t(), integer() | String.t()) :: Error.t() | nil
-  def get(%Config{repo: repo, prefix: prefix}, id) when is_integer(id) and id in 1..@largest_id//1 do
-    Error
-    |> from(as: :error)
-    |> where([error: error], error.id == ^id)
-    |> repo.one(prefix: prefix)
-  end
+  def get(%Config{repo: repo, prefix: prefix}, id) do
+    case error_id(id) do
+      nil ->
+        nil
 
-  def get(%Config{} = conf, id) when is_binary(id) do
-    case Integer.parse(id) do
-      {integer_id, ""} -> get(conf, integer_id)
-      _not_an_id -> nil
+      error_id ->
+        Error
+        |> from(as: :error)
+        |> where([error: error], error.id == ^error_id)
+        |> repo.one(prefix: prefix)
     end
   end
-
-  def get(%Config{}, _id), do: nil
 
   @spec latest_occurrence(Config.t(), integer()) :: Occurrence.t() | nil
   def latest_occurrence(%Config{repo: repo, prefix: prefix}, error_id) do
@@ -116,6 +116,54 @@ defmodule Imison.Errors do
       count_in_hour(conf, error, occurrence)
       {:ok, error}
     end)
+  end
+
+  @spec set_status(Config.t(), [integer() | String.t()], atom() | String.t()) ::
+          {:ok, non_neg_integer()} | {:error, :invalid_status}
+  def set_status(%Config{} = conf, ids, status) do
+    case known_status(status) do
+      nil -> {:error, :invalid_status}
+      known_status -> {:ok, store_status(conf, ids, known_status)}
+    end
+  end
+
+  defp error_id(id) when is_integer(id) and id in 1..@largest_id//1, do: id
+
+  defp error_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {integer_id, ""} -> error_id(integer_id)
+      _not_an_id -> nil
+    end
+  end
+
+  defp error_id(_id), do: nil
+
+  defp known_status(status) when is_atom(status), do: Enum.find(Error.statuses(), &(&1 == status))
+  defp known_status(status) when is_binary(status), do: Enum.find(Error.statuses(), &(Atom.to_string(&1) == status))
+  defp known_status(_status), do: nil
+
+  defp store_status(%Config{repo: repo, prefix: prefix} = conf, ids, status) do
+    error_ids = ids |> Enum.map(&error_id/1) |> Enum.reject(&is_nil/1)
+
+    {count, changed_ids} =
+      Error
+      |> from(as: :error)
+      |> where([error: error], error.id in ^error_ids)
+      |> update(^[set: [status: status, updated_at: updated_at_moved_forward(DateTime.utc_now())]])
+      |> select([error: error], error.id)
+      |> repo.update_all([], prefix: prefix)
+
+    if changed_ids != [], do: broadcast_status_changed(conf, changed_ids)
+    count
+  end
+
+  defp broadcast_status_changed(conf, error_ids) do
+    with {:error, reason} <- Broadcast.status_changed(conf, error_ids) do
+      FailureLog.error(@status_broadcast_failure, %{kind: :error, reason: reason, stacktrace: []})
+    end
+  catch
+    kind, reason ->
+      FailureLog.error(@status_broadcast_failure, %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
   end
 
   defp counts_oldest_first(hourly_counts, first_hour) do
@@ -186,23 +234,29 @@ defmodule Imison.Errors do
             type(^:resolved, error.status),
             type(^:unresolved, error.status),
             error.status
-          ),
-        regressed_at:
-          fragment(
-            "CASE WHEN ? = ? THEN GREATEST(?, ? + interval '1 microsecond') ELSE ? END",
-            error.status,
-            type(^:resolved, error.status),
-            type(^now, error.updated_at),
-            error.updated_at,
-            error.regressed_at
-          ),
-        updated_at:
-          fragment(
-            "GREATEST(?, ? + interval '1 microsecond')",
-            type(^now, error.updated_at),
-            error.updated_at
           )
       ]
+    )
+    |> update(^[set: [regressed_at: regressed_at_when_resolved(now), updated_at: updated_at_moved_forward(now)]])
+  end
+
+  defp regressed_at_when_resolved(now) do
+    dynamic(
+      [error: error],
+      fragment(
+        "CASE WHEN ? = ? THEN ? ELSE ? END",
+        error.status,
+        type(^:resolved, error.status),
+        ^updated_at_moved_forward(now),
+        error.regressed_at
+      )
+    )
+  end
+
+  defp updated_at_moved_forward(now) do
+    dynamic(
+      [error: error],
+      fragment("GREATEST(?, ? + interval '1 microsecond')", type(^now, error.updated_at), error.updated_at)
     )
   end
 

@@ -7,7 +7,13 @@ defmodule Imison.Web.ErrorsLive do
 
   With the instance's `pubsub` set, the connected list subscribes to the
   errors it records and reloads the page and counts at most once a second,
-  showing the design's Live indicator.
+  showing the design's Live indicator. Status changes made elsewhere reload it
+  the same way.
+
+  Rows can be selected, one by one or all at once; while some are, the bulk
+  bar offers the status changes that move them off the current tab. The
+  selection lives on the server and holds only listed errors: changing tab or
+  search, or acting on it, clears it.
   """
 
   use Phoenix.LiveView
@@ -20,6 +26,13 @@ defmodule Imison.Web.ErrorsLive do
   alias Imison.Web.Paths
 
   @live_reload_interval_ms 1_000
+  @live_reload_events [:recorded, :status_changed]
+  @bulk_actions %{
+    unresolved: [:resolved, :ignored],
+    resolved: [:unresolved, :ignored],
+    ignored: [:unresolved, :resolved]
+  }
+  @action_labels %{resolved: "Resolve", ignored: "Ignore", unresolved: "Mark unresolved"}
 
   @impl Phoenix.LiveView
   def mount(_params, %{"imison_name" => imison_name, "dashboard_path" => dashboard_path}, socket) do
@@ -31,7 +44,8 @@ defmodule Imison.Web.ErrorsLive do
        dashboard_path: dashboard_path,
        page_title: "Errors",
        live: connected?(socket) and Broadcast.subscribe(conf) == :ok,
-       live_reload: :idle
+       live_reload: :idle,
+       selected: MapSet.new()
      )}
   end
 
@@ -39,15 +53,20 @@ defmodule Imison.Web.ErrorsLive do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(status: status_from_param(params["status"]), search: search_from_param(params["q"]))
+     |> assign(
+       status: status_from_param(params["status"]),
+       search: search_from_param(params["q"]),
+       selected: MapSet.new()
+     )
      |> load_list()}
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:imison, :recorded, _error_id}, %{assigns: %{live_reload: :idle}} = socket),
-    do: {:noreply, reload_and_hold(socket)}
+  def handle_info({:imison, event, _error_ids}, %{assigns: %{live_reload: :idle}} = socket)
+      when event in @live_reload_events, do: {:noreply, reload_and_hold(socket)}
 
-  def handle_info({:imison, :recorded, _error_id}, socket), do: {:noreply, assign(socket, live_reload: :pending)}
+  def handle_info({:imison, event, _error_ids}, socket) when event in @live_reload_events,
+    do: {:noreply, assign(socket, live_reload: :pending)}
 
   def handle_info(:live_reload_hold_over, %{assigns: %{live_reload: :pending}} = socket),
     do: {:noreply, reload_and_hold(socket)}
@@ -58,6 +77,28 @@ defmodule Imison.Web.ErrorsLive do
   def handle_event("search", params, %{assigns: assigns} = socket) do
     search = search_from_param(params["q"])
     {:noreply, push_patch(socket, to: list_path(assigns.dashboard_path, assigns.status, search))}
+  end
+
+  def handle_event("toggle_selection", params, %{assigns: %{errors: errors, selected: selected}} = socket) do
+    case Enum.find(errors, &(Integer.to_string(&1.id) == params["id"])) do
+      %Error{id: error_id} -> {:noreply, assign(socket, selected: toggle(selected, error_id))}
+      nil -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_all", _params, %{assigns: %{errors: errors, selected: selected}} = socket) do
+    if all_selected?(errors, selected) do
+      {:noreply, assign(socket, selected: MapSet.new())}
+    else
+      {:noreply, assign(socket, selected: MapSet.new(errors, & &1.id))}
+    end
+  end
+
+  def handle_event("set_status", params, %{assigns: %{conf: conf, selected: selected}} = socket) do
+    case Errors.set_status(conf, MapSet.to_list(selected), params["status"]) do
+      {:ok, _count} -> {:noreply, socket |> assign(selected: MapSet.new()) |> load_list()}
+      {:error, :invalid_status} -> {:noreply, socket}
+    end
   end
 
   @impl Phoenix.LiveView
@@ -97,6 +138,8 @@ defmodule Imison.Web.ErrorsLive do
         <.error_list
           :if={@errors != []}
           errors={@errors}
+          selected={@selected}
+          actions={bulk_actions(@status)}
           hourly_counts={@hourly_counts}
           total={@counts[@status]}
           dashboard_path={@dashboard_path}
@@ -114,6 +157,8 @@ defmodule Imison.Web.ErrorsLive do
   end
 
   attr :errors, :list, required: true
+  attr :selected, MapSet, required: true
+  attr :actions, :list, required: true
   attr :hourly_counts, :map, required: true
   attr :total, :integer, required: true
   attr :now, DateTime, required: true
@@ -121,11 +166,38 @@ defmodule Imison.Web.ErrorsLive do
 
   defp error_list(assigns) do
     ~H"""
+    <div :if={MapSet.size(@selected) > 0} class="bulkbar">
+      <span>{MapSet.size(@selected)} selected</span>
+      <button
+        :for={status <- @actions}
+        class="btn btn--sm"
+        type="button"
+        phx-click="set_status"
+        phx-value-status={status}
+      >
+        {action_label(status)}
+      </button>
+    </div>
     <div class="errors__head">
-      <span></span><span>Error</span><span>Last 24 hours</span><span style="text-align:right">Events</span><span style="text-align:right">Last seen</span>
+      <input
+        class="checkbox"
+        type="checkbox"
+        aria-label="Select all"
+        checked={all_selected?(@errors, @selected)}
+        phx-click="toggle_all"
+      />
+      <span>Error</span><span>Last 24 hours</span><span style="text-align:right">Events</span><span style="text-align:right">Last seen</span>
     </div>
     <ul class="errors">
       <li :for={error <- @errors} id={"error-#{error.id}"} class="error-row">
+        <input
+          class="checkbox error-row__check"
+          type="checkbox"
+          aria-label={"Select #{error.kind}"}
+          checked={MapSet.member?(@selected, error.id)}
+          phx-click="toggle_selection"
+          phx-value-id={error.id}
+        />
         <div class="error-row__main">
           <div class="error-row__title">
             <.link class="error-row__kind truncate" navigate={Paths.error(@dashboard_path, error.id)}>{error.kind}</.link>
@@ -192,12 +264,13 @@ defmodule Imison.Web.ErrorsLive do
     """
   end
 
-  defp load_list(%{assigns: %{conf: conf, status: status, search: search}} = socket) do
+  defp load_list(%{assigns: %{conf: conf, status: status, search: search, selected: selected}} = socket) do
     now = DateTime.utc_now()
     errors = Errors.list(conf, status: status, search: search)
 
     assign(socket,
       errors: errors,
+      selected: MapSet.intersection(selected, MapSet.new(errors, & &1.id)),
       hourly_counts: Errors.hourly_counts(conf, Enum.map(errors, & &1.id), now),
       counts: Errors.count_by_status(conf, search: search),
       now: now
@@ -211,6 +284,19 @@ defmodule Imison.Web.ErrorsLive do
     |> load_list()
     |> assign(live_reload: :holding)
   end
+
+  defp toggle(selected, error_id) do
+    if MapSet.member?(selected, error_id),
+      do: MapSet.delete(selected, error_id),
+      else: MapSet.put(selected, error_id)
+  end
+
+  defp all_selected?([], _selected), do: false
+  defp all_selected?(errors, selected), do: Enum.all?(errors, &MapSet.member?(selected, &1.id))
+
+  defp bulk_actions(status), do: Map.fetch!(@bulk_actions, status)
+
+  defp action_label(status), do: Map.fetch!(@action_labels, status)
 
   defp status_from_param(param) do
     Enum.find(Error.statuses(), Error.default_status(), &(Atom.to_string(&1) == param))

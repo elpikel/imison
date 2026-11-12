@@ -5,6 +5,9 @@ defmodule Imison.Web.ErrorLive do
   the latest occurrence's stack trace, request, Logger metadata and runtime.
   Panels with nothing to show are left out. An unknown id sends the developer
   back to the list with a message.
+
+  The summary rail offers the status changes: Resolve and Ignore for an
+  unresolved error, Mark unresolved for a resolved or ignored one.
   """
 
   use Phoenix.LiveView
@@ -16,11 +19,16 @@ defmodule Imison.Web.ErrorLive do
   alias Imison.Web.Layouts
 
   @status_flags %{unresolved: "flag--unresolved", resolved: "flag--resolved", ignored: "flag--off"}
+  @status_actions %{
+    unresolved: [%{status: :resolved, label: "Resolve", style: "btn--primary"}, %{status: :ignored, label: "Ignore"}],
+    resolved: [%{status: :unresolved, label: "Mark unresolved"}],
+    ignored: [%{status: :unresolved, label: "Mark unresolved"}]
+  }
 
   @impl Phoenix.LiveView
   def mount(%{"id" => id}, %{"imison_name" => imison_name, "dashboard_path" => dashboard_path}, socket) do
     conf = Imison.config(imison_name)
-    socket = assign(socket, dashboard_path: dashboard_path)
+    socket = assign(socket, conf: conf, dashboard_path: dashboard_path)
 
     case Errors.get(conf, id) do
       %Error{} = error ->
@@ -32,10 +40,18 @@ defmodule Imison.Web.ErrorLive do
          )}
 
       nil ->
-        {:ok,
-         socket
-         |> put_flash(:error, "That error doesn't exist. It may have been deleted.")
-         |> push_navigate(to: dashboard_path)}
+        {:ok, back_to_list(socket)}
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("set_status", params, %{assigns: %{conf: conf, error: error}} = socket) do
+    with {:ok, _count} <- Errors.set_status(conf, [error.id], params["status"]),
+         %Error{} = changed_error <- Errors.get(conf, error.id) do
+      {:noreply, assign(socket, error: changed_error)}
+    else
+      {:error, :invalid_status} -> {:noreply, socket}
+      nil -> {:noreply, back_to_list(socket)}
     end
   end
 
@@ -57,6 +73,19 @@ defmodule Imison.Web.ErrorLive do
           <.occurrence :if={@occurrence} occurrence={@occurrence} />
         </div>
         <aside class="panel rail" aria-label="Error summary">
+          <div class="rail__block">
+            <div class="btn-row">
+              <button
+                :for={action <- status_actions(@error.status)}
+                class={["btn", action[:style]]}
+                type="button"
+                phx-click="set_status"
+                phx-value-status={action.status}
+              >
+                {action.label}
+              </button>
+            </div>
+          </div>
           <div class="rail__block rail__stats">
             <div>
               <p class="rail__label">Events</p>
@@ -136,6 +165,12 @@ defmodule Imison.Web.ErrorLive do
     """
   end
 
+  defp back_to_list(%{assigns: %{dashboard_path: dashboard_path}} = socket) do
+    socket
+    |> put_flash(:error, "That error doesn't exist. It may have been deleted.")
+    |> push_navigate(to: dashboard_path)
+  end
+
   defp request_rows(request) when is_map(request) do
     method_and_path =
       [request["method"], request["path"]]
@@ -188,4 +223,6 @@ defmodule Imison.Web.ErrorLive do
   defp as_text(value), do: inspect(value, limit: :infinity, printable_limit: :infinity)
 
   defp status_flag(status), do: Map.fetch!(@status_flags, status)
+
+  defp status_actions(status), do: Map.fetch!(@status_actions, status)
 end

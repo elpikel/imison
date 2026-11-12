@@ -299,6 +299,76 @@ defmodule Imison.Web.ErrorLiveTest do
     assert browser_conn() |> get("/errors/errors/#{error.id}") |> redirected_to() == "/errors/login"
   end
 
+  test "resolving an unresolved error from its detail page stores it as resolved and shows it as resolved" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    view |> element(".rail .btn--primary", "Resolve") |> render_click()
+
+    assert %Error{status: :resolved} = Repo.get!(Error, error.id)
+    assert has_element?(view, ".error-head__meta .flag--resolved", "Resolved")
+  end
+
+  test "ignoring an unresolved error from its detail page stores it as ignored and shows it as ignored" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    view |> element(".rail .btn", "Ignore") |> render_click()
+
+    assert %Error{status: :ignored} = Repo.get!(Error, error.id)
+    assert has_element?(view, ".error-head__meta .flag--off", "Ignored")
+  end
+
+  test "marking a resolved error unresolved from its detail page stores it as unresolved" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    set_status(error, :resolved)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    view |> element(".rail .btn", "Mark unresolved") |> render_click()
+
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+    assert has_element?(view, ".error-head__meta .flag--unresolved", "Unresolved")
+  end
+
+  test "marking an ignored error unresolved from its detail page stores it as unresolved" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    set_status(error, :ignored)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    view |> element(".rail .btn", "Mark unresolved") |> render_click()
+
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+  end
+
+  test "an unresolved error's detail page offers Resolve and Ignore, and a resolved one only Mark unresolved" do
+    start_imison(name: Dashboard, enabled: false)
+    unresolved = record(kind: "KeyError")
+    resolved = record(kind: "MatchError")
+    set_status(resolved, :resolved)
+
+    {:ok, unresolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{unresolved.id}")
+    {:ok, resolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{resolved.id}")
+
+    assert status_buttons(unresolved_view) == ["Resolve", "Ignore"]
+    assert status_buttons(resolved_view) == ["Mark unresolved"]
+  end
+
+  test "a status event with an unknown status changes nothing and the page keeps working" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    render_click(view, "set_status", %{"status" => "deleted"})
+    render_click(view, "set_status", %{})
+
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+    assert has_element?(view, ".error-head__meta .flag--unresolved", "Unresolved")
+  end
+
   defp record(overrides) do
     {:ok, error} = Errors.record(Imison.config(Dashboard), occurrence(overrides))
     error
@@ -341,6 +411,13 @@ defmodule Imison.Web.ErrorLiveTest do
   end
 
   defp document(view), do: view |> render() |> LazyHTML.from_fragment()
+
+  defp status_buttons(view) do
+    view
+    |> document()
+    |> LazyHTML.query(".rail .btn-row .btn")
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
 
   defp rail_value(view, label) do
     view

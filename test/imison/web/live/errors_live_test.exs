@@ -575,6 +575,227 @@ defmodule Imison.Web.ErrorsLiveTest do
     assert log =~ ~r/domain=elixir\.imison \[error\] Imison failed to subscribe to recorded errors/
   end
 
+  test "resolving two selected errors from the bulk bar stores them as resolved, takes them off the tab and updates the counts" do
+    start_imison(name: Dashboard, enabled: false)
+    first = record(kind: "KeyError")
+    second = record(kind: "ArgumentError")
+    third = record(kind: "MatchError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(view, first)
+    tick(view, second)
+
+    view |> element(".bulkbar .btn", "Resolve") |> render_click()
+
+    assert %Error{status: :resolved} = Repo.get!(Error, first.id)
+    assert %Error{status: :resolved} = Repo.get!(Error, second.id)
+    assert %Error{status: :unresolved} = Repo.get!(Error, third.id)
+    assert texts(view, @listed_kinds) == ["MatchError"]
+    assert tab_counts(view) == %{"Unresolved" => "1", "Resolved" => "2", "Ignored" => "0"}
+  end
+
+  test "ignoring selected errors from the bulk bar stores them as ignored" do
+    start_imison(name: Dashboard, enabled: false)
+    first = record(kind: "KeyError")
+    second = record(kind: "ArgumentError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(view, first)
+    tick(view, second)
+
+    view |> element(".bulkbar .btn", "Ignore") |> render_click()
+
+    assert %Error{status: :ignored} = Repo.get!(Error, first.id)
+    assert %Error{status: :ignored} = Repo.get!(Error, second.id)
+  end
+
+  test "marking selected resolved errors unresolved from the bulk bar stores them as unresolved" do
+    start_imison(name: Dashboard, enabled: false)
+    error = [kind: "KeyError"] |> record() |> set_status(:resolved)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+    tick(view, error)
+
+    view |> element(".bulkbar .btn", "Mark unresolved") |> render_click()
+
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+  end
+
+  test "marking selected ignored errors unresolved from the bulk bar stores them as unresolved" do
+    start_imison(name: Dashboard, enabled: false)
+    error = [kind: "KeyError"] |> record() |> set_status(:ignored)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+    tick(view, error)
+
+    view |> element(".bulkbar .btn", "Mark unresolved") |> render_click()
+
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+  end
+
+  test "the bulk bar offers the actions that move errors off the current tab" do
+    start_imison(name: Dashboard, enabled: false)
+    unresolved = record(kind: "KeyError")
+    resolved = [kind: "MatchError"] |> record() |> set_status(:resolved)
+    ignored = [kind: "ArgumentError"] |> record() |> set_status(:ignored)
+    {:ok, unresolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, resolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+    {:ok, ignored_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+
+    tick(unresolved_view, unresolved)
+    tick(resolved_view, resolved)
+    tick(ignored_view, ignored)
+
+    assert texts(unresolved_view, ".bulkbar .btn") == ["Resolve", "Ignore"]
+    assert texts(resolved_view, ".bulkbar .btn") == ["Mark unresolved", "Ignore"]
+    assert texts(ignored_view, ".bulkbar .btn") == ["Mark unresolved", "Resolve"]
+  end
+
+  test "ticking Select all selects every listed row and the bulk bar shows the count" do
+    start_imison(name: Dashboard, enabled: false)
+    first = record(kind: "KeyError")
+    second = record(kind: "ArgumentError")
+    third = record(kind: "MatchError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    view |> element(".errors__head .checkbox") |> render_click()
+
+    assert has_element?(view, ".bulkbar", "3 selected")
+    assert Enum.all?([first, second, third], &has_element?(view, "#error-#{&1.id} .error-row__check[checked]"))
+  end
+
+  test "unticking Select all clears the selection" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+    record(kind: "ArgumentError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    view |> element(".errors__head .checkbox") |> render_click()
+
+    view |> element(".errors__head .checkbox") |> render_click()
+
+    refute has_element?(view, ".bulkbar")
+    refute has_element?(view, ".error-row__check[checked]")
+  end
+
+  test "the bulk bar shows how many rows are selected" do
+    start_imison(name: Dashboard, enabled: false)
+    first = record(kind: "KeyError")
+    record(kind: "ArgumentError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    tick(view, first)
+
+    assert has_element?(view, ".bulkbar", "1 selected")
+  end
+
+  test "with no row selected the bulk bar is hidden" do
+    start_imison(name: Dashboard, enabled: false)
+    record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    refute has_element?(view, ".bulkbar")
+  end
+
+  test "unticking the only selected row hides the bulk bar" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(view, error)
+
+    tick(view, error)
+
+    refute has_element?(view, ".bulkbar")
+  end
+
+  test "switching tabs clears the selection" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(view, error)
+
+    view |> element(".tabs__item", "Resolved") |> render_click()
+    view |> element(".tabs__item", "Unresolved") |> render_click()
+
+    refute has_element?(view, ".bulkbar")
+  end
+
+  test "searching clears the selection" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(view, error)
+
+    view |> form(".toolbar", q: "Key") |> render_change()
+
+    refute has_element?(view, ".bulkbar")
+  end
+
+  test "after a bulk action nothing stays selected" do
+    start_imison(name: Dashboard, enabled: false)
+    first = record(kind: "KeyError")
+    record(kind: "ArgumentError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(view, first)
+
+    view |> element(".bulkbar .btn", "Resolve") |> render_click()
+
+    refute has_element?(view, ".bulkbar")
+  end
+
+  test "another open list reloads its rows and counts when errors change status" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+    first = record(kind: "KeyError")
+    record(kind: "ArgumentError")
+    {:ok, acting_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, watching_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(acting_view, first)
+
+    acting_view |> element(".bulkbar .btn", "Resolve") |> render_click()
+
+    assert texts(watching_view, @listed_kinds) == ["ArgumentError"]
+    assert tab_counts(watching_view) == %{"Unresolved" => "1", "Resolved" => "1", "Ignored" => "0"}
+  end
+
+  test "a selected row that another list moves off the tab is no longer selected" do
+    start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
+    first = record(kind: "KeyError")
+    record(kind: "ArgumentError")
+    {:ok, acting_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, watching_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(acting_view, first)
+    tick(watching_view, first)
+
+    acting_view |> element(".bulkbar .btn", "Resolve") |> render_click()
+
+    refute has_element?(watching_view, ".bulkbar")
+  end
+
+  test "a status event with an unknown status changes nothing and the page keeps working" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    tick(view, error)
+
+    render_click(view, "set_status", %{"status" => "deleted"})
+    render_click(view, "set_status", %{})
+
+    assert %Error{status: :unresolved} = Repo.get!(Error, error.id)
+    assert texts(view, @listed_kinds) == ["KeyError"]
+  end
+
+  test "selecting ids that are not listed error ids selects nothing, so a bulk action changes nothing" do
+    start_imison(name: Dashboard, enabled: false)
+    listed = record(kind: "KeyError")
+    unlisted = [kind: "MatchError"] |> record() |> set_status(:ignored)
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+
+    render_click(view, "toggle_selection", %{"id" => "abc"})
+    render_click(view, "toggle_selection", %{"id" => Integer.to_string(unlisted.id)})
+    render_click(view, "toggle_selection", %{})
+    render_click(view, "set_status", %{"status" => "resolved"})
+
+    refute has_element?(view, ".bulkbar")
+    assert %Error{status: :unresolved} = Repo.get!(Error, listed.id)
+    assert %Error{status: :ignored} = Repo.get!(Error, unlisted.id)
+  end
+
   defp record(overrides) do
     {:ok, error} = Errors.record(Imison.config(Dashboard), occurrence(overrides))
     error
@@ -649,11 +870,17 @@ defmodule Imison.Web.ErrorsLiveTest do
     |> Enum.map(&(&1 |> LazyHTML.attribute("data-l") |> List.first()))
   end
 
-  defp set_status(%Error{id: error_id}, status) do
+  defp set_status(%Error{id: error_id} = recorded, status) do
     Error
     |> from(as: :error)
     |> where([error: error], error.id == ^error_id)
     |> Repo.update_all(set: [status: status])
+
+    recorded
+  end
+
+  defp tick(view, %Error{id: error_id}) do
+    view |> element("#error-#{error_id} .error-row__check") |> render_click()
   end
 
   defp texts(view, selector) do
@@ -661,7 +888,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     |> render()
     |> LazyHTML.from_fragment()
     |> LazyHTML.query(selector)
-    |> Enum.map(&LazyHTML.text/1)
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
   end
 
   defp tab_counts(view) do
