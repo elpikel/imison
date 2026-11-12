@@ -34,7 +34,7 @@ defmodule Imison.Notifications.Message do
   alias Imison.Notifications.Rule
   alias Imison.Web.Paths
 
-  @type trigger :: Rule.trigger() | :test
+  @type trigger :: :new | :regression | :still_happening | :digest | :test
 
   @type summary_line :: %{
           error_id: pos_integer(),
