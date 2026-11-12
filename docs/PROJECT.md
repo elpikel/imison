@@ -89,7 +89,7 @@ Installation copies Oban's: an Igniter-powered task does every step, and each st
 ```elixir
 # mix.exs
 {:imison, "~> 0.1"},
-{:igniter, "~> 0.5", only: [:dev]}
+{:igniter, "~> 0.8", only: [:dev]}
 ```
 
 ```sh
@@ -98,28 +98,35 @@ mix imison.install      # or in one step: mix igniter.install imison
 mix ecto.migrate
 ```
 
-`mix imison.install` makes these five changes, and skips any that are already there:
+`mix imison.install` makes these changes, and skips any that are already there, so running it twice changes nothing:
 
 ```elixir
-# 1. config/config.exs
+# 1. config/config.exs (mailer only when the app has a MyApp.Mailer module;
+#    pubsub is the endpoint's pubsub_server, else MyApp.PubSub)
 config :my_app, Imison,
   repo: MyApp.Repo,
   pubsub: MyApp.PubSub,
   mailer: MyApp.Mailer
 
-# 2. config/runtime.exs
+# 2. config/runtime.exs, inside `if config_env() == :prod do`
 config :my_app, Imison,
   username: System.fetch_env!("IMISON_USER"),
   password: System.fetch_env!("IMISON_PASSWORD")
 
-# 3. lib/my_app/application.ex, after the repo
+# 3. config/dev.exs: a password generated at install time
+config :my_app, Imison, username: "admin", password: "<24 random characters>"
+
+#    config/test.exs
+config :my_app, Imison, enabled: false, username: "test", password: "test"
+
+# 4. lib/my_app/application.ex, after the repo and the PubSub
 {Imison, Application.fetch_env!(:my_app, Imison)}
 
-# 4. priv/repo/migrations/20261111120000_add_imison.exs
+# 5. priv/repo/migrations/20261112093108_add_imison.exs
 def up, do: Imison.Migration.up(version: 1)
 def down, do: Imison.Migration.down(version: 1)
 
-# 5. lib/my_app_web/router.ex
+# 6. lib/my_app_web/router.ex
 import Imison.Web.Router
 
 scope "/" do
@@ -128,7 +135,7 @@ scope "/" do
 end
 ```
 
-It also sets `config :my_app, Imison, enabled: false` in `config/test.exs`. Unlike Oban Web, which mounts its dashboard inside the dev-only routes, Imison mounts the route for every environment, because it brings its own login.
+It also adds `:imison` to `import_deps` in `.formatter.exs`, so `imison_dashboard` is formatted without parentheses. The production login is read from the environment only in production: a fresh app boots in dev and test without `IMISON_USER` or `IMISON_PASSWORD` set, and `username` and `password` are set in those environments because they are required even with `enabled: false`. Unlike Oban Web, which mounts its dashboard inside the dev-only routes, Imison mounts the route for every environment, because it brings its own login.
 
 ## Data model
 
@@ -194,7 +201,7 @@ config :my_app, Imison,
 
 ## Configuration
 
-Options live under the host app's config key, as with Oban. Only the login comes from environment variables, read in `config/runtime.exs`; Imison refuses to start when a required option is missing.
+Options live under the host app's config key, as with Oban. In production the login comes from environment variables, read in `config/runtime.exs` (the installer sets a generated dev login and a test login in `config/dev.exs` and `config/test.exs`); Imison refuses to start when a required option is missing.
 
 | Option | Required | Purpose |
 |---|---|---|
