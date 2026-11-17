@@ -147,8 +147,10 @@ scope "/" do
 end
 
 # 7. lib/my_app_web/endpoint.ex: what analytics reads on LiveView navigations
+#    (longpoll too, when the socket has it; analytics itself stays off)
 socket "/live", Phoenix.LiveView.Socket,
-  websocket: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]
+  websocket: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]],
+  longpoll: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]
 ```
 
 It also adds `:imison` to `import_deps` in `.formatter.exs`, so `imison_dashboard` is formatted without parentheses. The production login is read from the environment only in production: a fresh app boots in dev and test without `IMISON_USER` or `IMISON_PASSWORD` set, and `username` and `password` are set in those environments because they are required even with `enabled: false`. Unlike Oban Web, which mounts its dashboard inside the dev-only routes, Imison mounts the route for every environment, because it brings its own login.

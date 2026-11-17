@@ -185,7 +185,8 @@ The Analytics tab (`<path>/analytics`) shows the pageviews Imison counts with
 `analytics: true` (see [Analytics](configuration.md#analytics) for turning it
 on and what's counted). Pick a range at the top: today, 7 days or 30 days.
 Ranges are in UTC and end now: "7 days" is today and the 6 days before it.
-The range is kept in the URL (`?range=today`, `7d` or `30d`).
+The range is kept in the URL (`?range=today`, `7d` or `30d`); a missing or
+unknown one shows 7 days.
 
 | Part | What it is |
 |---|---|
@@ -193,7 +194,7 @@ The range is kept in the URL (`?range=today`, `7d` or `30d`).
 | Pageviews | Page loads and LiveView navigations |
 | Bounce rate | The share of visits with a single pageview. A visit is a visitor's pageviews with no gap longer than 30 minutes. |
 | Visit duration | The average time from a visit's first to its last pageview. It's an estimate: the time spent on the last page counts as zero, so a bounce lasts 0 seconds. |
-| Chart | Visitors per hour for today, per day otherwise, in UTC. Hover a bar to see its hour or day and visitor count. |
+| Chart | Visitors per hour for today, per day otherwise, in UTC ("Visitors per hour (UTC)" or "Visitors per day (UTC)"), with the peak above it. Hover a column to see its hour or day and visitor count. |
 | Top pages | The 10 paths with the most visitors, without query strings |
 | Top sources | The 10 referring sites with the most visitors. Visitors without a referrer, or coming from a page of your own app, are "Direct / None". |
 

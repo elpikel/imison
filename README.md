@@ -178,7 +178,7 @@ other non-HTML responses, assets, redirects, and pages your CDN serves from
 its cache.
 
 **The numbers**, on the dashboard's Analytics tab for today, 7 or 30 days
-(UTC):
+(UTC), are read when the page opens; they don't update live:
 
 - **Visitors**: a visitor is a hash of a daily salt, the IP and the user
   agent, so the same person is a new visitor each UTC day. Over 7 or 30 days,

@@ -51,10 +51,10 @@ run it again safely. It makes these changes:
 | `config/dev.exs` | The login `admin` with a random password, generated at install time |
 | `config/test.exs` | `enabled: false`, so your tests record nothing |
 | `lib/my_app/application.ex` | `{Imison, Application.fetch_env!(:my_app, Imison)}` after the repo and PubSub |
-| `priv/repo/migrations/*_add_imison.exs` | A migration calling `Imison.Migration.up(version: 2)` |
+| `priv/repo/migrations/*_add_imison.exs` | A migration calling `Imison.Migration.up(version: 2)` and `down(version: 1)` |
 | `lib/my_app_web/router.ex` | `import Imison.Web.Router` and `imison_dashboard "/imison"` |
 | `.formatter.exs` | `:imison` in `import_deps` |
-| `lib/my_app_web/endpoint.ex` | `:peer_data`, `:user_agent` and `:x_headers` in the `/live` socket's `connect_info`, for [analytics](configuration.md#analytics) |
+| `lib/my_app_web/endpoint.ex` | `:peer_data`, `:user_agent` and `:x_headers` in the `/live` socket's `connect_info` (websocket, and longpoll when it has one), for [analytics](configuration.md#analytics). Analytics stays off until you set `analytics: true`. |
 
 Without Igniter, `mix imison.install` changes no files. It prints the same
 steps with your app's names filled in, for you to apply by hand. They are
@@ -88,10 +88,10 @@ end
 ```
 
 Request the page, and the error appears on the overview and in the list
-within a second. You
-don't need to reload the page. Request it again and the error's count goes up
-instead of a second row appearing: occurrences with the same exception and
-the same place in your code are grouped into one error.
+within a second. You don't need to reload the page. Request it again and
+the error's count goes up instead of a second row appearing: occurrences
+with the same exception and the same place in your code are grouped into
+one error.
 
 ## Production
 
