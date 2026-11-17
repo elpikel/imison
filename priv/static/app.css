@@ -9,8 +9,8 @@
    zoom and in both themes. The shadow recipes live in the tokens.
 
    Sections: tokens, base, top bar, page, buttons, forms, flags, panels,
-   heat strip, error list, error detail, notifications, login, flash,
-   responsive.
+   heat strip, error list, error detail, notifications, analytics, overview,
+   login, flash, responsive.
    ========================================================================== */
 
 /* ---------- Fonts ----------
@@ -514,6 +514,85 @@ code, pre, .mono { font-family: var(--font-code); font-size: 0.862em; }
 .rule__hint { font-size: 13.5px; color: var(--ink-2); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 40px; }
 
+/* ---------- Analytics ---------- */
+.range {
+  display: inline-flex; gap: 2px; padding: 2px;
+  border-radius: var(--radius-m); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--ring);
+}
+.range__item {
+  display: inline-flex; align-items: center; height: 28px; padding: 0 12px;
+  border-radius: var(--radius-s); color: var(--ink-2); font-size: 13.5px; font-weight: 550; text-decoration: none;
+}
+.range__item:hover { color: var(--ink); }
+.range__item[aria-current="true"] { color: var(--ink); background: var(--surface); box-shadow: var(--shadow-control); }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); box-shadow: inset 0 -1px 0 var(--line); }
+.stat { padding: 16px 20px; }
+.stat + .stat { box-shadow: inset 1px 0 0 var(--line); }
+.stat__label { font-size: 12.5px; color: var(--ink-2); }
+.stat__value { margin-top: 2px; font-size: 26px; font-weight: 650; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+
+.chart { margin: 0; padding: 16px 20px 18px; }
+.chart__caption { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: 13px; }
+.chart__plot {
+  display: grid; grid-template-columns: repeat(var(--buckets), minmax(0, 1fr));
+  aspect-ratio: 6 / 1; box-shadow: inset 0 -1px 0 var(--line);
+}
+.chart__slot { position: relative; border-radius: var(--radius-s) var(--radius-s) 0 0; }
+.chart__slot:hover { background: var(--glow); }
+.chart__bar {
+  position: absolute; bottom: 0; left: 13%; width: 74%; height: max(var(--height), 2px);
+  border-radius: 4px 4px 0 0; background: var(--accent);
+}
+.chart__bar--empty { height: 0; }
+.chart__slot:hover .chart__bar { background: var(--accent-edge); }
+/* Above the plot; shifted left by the slot's place in the row so the first and last stay inside it */
+.chart__tip {
+  position: absolute; bottom: calc(100% + 6px); left: 50%; z-index: 1;
+  transform: translateX(calc(var(--position) * -1));
+  padding: 3px 8px; border-radius: var(--radius-s); white-space: nowrap; pointer-events: none;
+  font-size: 12px; font-weight: 550; font-variant-numeric: tabular-nums;
+  background: var(--primary); color: var(--primary-ink); box-shadow: var(--shadow-pop);
+  visibility: hidden;
+}
+.chart__slot:hover .chart__tip { visibility: visible; }
+.chart__labels {
+  display: grid; grid-template-columns: repeat(var(--buckets), minmax(0, 1fr));
+  margin-top: 7px; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+}
+.chart__labels span { overflow: visible; white-space: nowrap; text-align: center; }
+
+.toplists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.toplists .panel + .panel { margin-top: 0; }
+.toplist { width: 100%; border-collapse: collapse; font-size: 13.5px; table-layout: fixed; }
+.toplist th {
+  height: 34px; padding: 0 20px; font-size: 12.5px; font-weight: 550; color: var(--ink-2); text-align: right;
+  background: color-mix(in srgb, var(--bg) 60%, var(--surface)); box-shadow: inset 0 -1px 0 var(--line);
+}
+.toplist td { padding: 0 20px; height: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+.toplist th:first-child, .toplist td:first-child { width: 60%; text-align: left; }
+.toplist td:first-child { position: relative; }
+.toplist tr + tr td { box-shadow: inset 0 1px 0 var(--line); }
+.toplist__bar {
+  position: absolute; inset: 5px auto 5px 8px; width: max(4px, calc(var(--share) - 16px));
+  border-radius: var(--radius-s); background: var(--accent-soft);
+}
+.toplist__name { position: relative; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.analytics-off__code { display: inline-block; margin-top: 4px; text-align: left; }
+
+/* ---------- Overview: a glimpse of each page inside one card ---------- */
+.stats--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stats--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.errors__head--glimpse, .error-row--glimpse {
+  grid-template-columns: minmax(0, 1fr) 216px 72px 92px;
+  grid-template-areas: "main heat events seen";
+}
+.errors__head--glimpse { box-shadow: inset 0 -1px 0 var(--line); }
+.toplist--glimpse th { box-shadow: inset 0 1px 0 var(--line), inset 0 -1px 0 var(--line); }
+.empty--glimpse { padding: 32px 24px; }
+.empty--glimpse .empty__text { margin-bottom: 0; }
+
 /* ---------- Login ---------- */
 .auth { position: relative; display: grid; place-items: center; min-height: 100vh; padding: 24px; overflow: hidden; }
 .auth__card {
@@ -563,7 +642,15 @@ code, pre, .mono { font-family: var(--font-code); font-size: 0.862em; }
     gap: 8px 12px;
   }
   .error-row__seen { text-align: left; }
+  .error-row--glimpse {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "main main" "heat events" "seen seen";
+  }
   .form-grid { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat:nth-child(3) { box-shadow: inset 0 1px 0 var(--line); }
+  .stat:nth-child(4) { box-shadow: inset 1px 0 0 var(--line), inset 0 1px 0 var(--line); }
+  .toplists { grid-template-columns: 1fr; }
   .kv { grid-template-columns: 1fr; gap: 2px; }
   .kv dd { margin-bottom: 8px; }
 }

@@ -68,7 +68,7 @@ defmodule Imison.Notifications.Channels.WebhookTest do
 
     assert payload["summary"] == %{
              "date" => "2026-11-11",
-             "url" => "https://app.example.com/errors",
+             "url" => "https://app.example.com/errors/errors",
              "new" => %{"total" => 1, "lines" => [expected_line]},
              "came_back" => %{"total" => 0, "lines" => []},
              "most_frequent" => %{"total" => 2, "lines" => [expected_line]}

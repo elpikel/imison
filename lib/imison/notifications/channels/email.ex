@@ -15,9 +15,9 @@ if Code.ensure_loaded?(Swoosh.Email) do
     with three sections, "New errors", "Came back" and "Most frequent", each
     line giving an error's kind, message, that day's occurrence count,
     location and, with `dashboard_url`, its link; a section with more errors
-    than it lists ends with "and N more" and the dashboard's link. The test message sent from
-    the notifications screen is "[Imison] Test email", saying that delivery
-    works.
+    than it lists ends with "and N more" and the link to the dashboard's error
+    list. The test message sent from the notifications screen is
+    "[Imison] Test email", saying that delivery works.
 
     Each recipient must look like an email address (`local@domain`); the
     domain isn't looked up. On the Notifications screen its panel is "Email",
@@ -132,11 +132,11 @@ if Code.ensure_loaded?(Swoosh.Email) do
       |> Enum.join("\n")
     end
 
-    defp digest_section(title, %{lines: []}, _dashboard_url), do: "#{title}\nNone."
+    defp digest_section(title, %{lines: []}, _error_list_url), do: "#{title}\nNone."
 
-    defp digest_section(title, %{lines: lines, total: total}, dashboard_url) do
+    defp digest_section(title, %{lines: lines, total: total}, error_list_url) do
       [title | Enum.map(lines, &digest_line/1)]
-      |> Enum.concat([left_out(total - length(lines), dashboard_url)])
+      |> Enum.concat([left_out(total - length(lines), error_list_url)])
       |> Enum.reject(&is_nil/1)
       |> Enum.join("\n")
     end
@@ -152,9 +152,9 @@ if Code.ensure_loaded?(Swoosh.Email) do
       |> Enum.join("\n")
     end
 
-    defp left_out(0, _dashboard_url), do: nil
+    defp left_out(0, _error_list_url), do: nil
     defp left_out(count, nil), do: "and #{Format.with_thousands_separators(count)} more"
-    defp left_out(count, dashboard_url), do: "and #{Format.with_thousands_separators(count)} more: #{dashboard_url}"
+    defp left_out(count, error_list_url), do: "and #{Format.with_thousands_separators(count)} more: #{error_list_url}"
 
     defp occurrences(1), do: "1 occurrence"
     defp occurrences(count), do: "#{Format.with_thousands_separators(count)} occurrences"

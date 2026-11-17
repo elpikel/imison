@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview – Imison</title>
+<link rel="stylesheet" href="../../priv/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="overview.html"><svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" style="fill:var(--mark)"/><path d="M5 14h4l2-6 3 9 2-5h3" fill="none" style="stroke:var(--spark)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Imison</a>
+  <nav class="nav" aria-label="Main">
+    <a class="nav__link" href="overview.html" aria-current="page">Overview</a>
+    <a class="nav__link" href="errors.html">Errors<span class="nav__count">8</span></a>
+    <a class="nav__link" href="analytics.html">Analytics</a>
+    <a class="nav__link" href="notifications.html">Notifications</a>
+  </nav>
+  <div class="topbar__end">
+    <span class="live" title="Connected. New events appear without reloading."><span class="live__dot"></span><span>Live</span></span>
+    <a class="btn btn--quiet btn--sm" href="login.html">Sign out</a>
+  </div>
+</header>
+<main class="page">
+  <div class="page__head">
+    <div>
+      <h1 class="page__title">Overview</h1>
+      <p class="page__lede">A glimpse of your app’s errors and visitors. Each card opens its full page.</p>
+    </div>
+  </div>
+
+  <!-- Errors card: updates live, like the error list (broadcasts, or polling without PubSub).
+       "New in the last 24 hours" counts errors first seen in the window, whatever their status now. -->
+  <section class="panel" id="overview-errors">
+    <div class="panel__head">
+      <h2 class="section-title">Errors</h2>
+      <a class="btn btn--sm" href="errors.html">All errors</a>
+    </div>
+    <dl class="stats stats--2">
+      <div class="stat"><dt class="stat__label">Unresolved</dt><dd class="stat__value">8</dd></div>
+      <div class="stat"><dt class="stat__label">New in the last 24 hours</dt><dd class="stat__value">2</dd></div>
+    </dl>
+    <!-- The 5 most recently seen unresolved errors: the error list's rows, without the selection checkboxes -->
+    <div class="errors__head errors__head--glimpse">
+      <span>Error</span><span>Last 24 hours</span><span style="text-align:right">Events</span><span style="text-align:right">Last seen</span>
+    </div>
+    <ul class="errors">
+      <li class="error-row error-row--glimpse">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">FunctionClauseError</a></div>
+          <p class="error-row__message truncate">no function clause matching in Checkout.Payments.normalize_currency/1</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/payments.ex:140</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="212 events in the last 24 hours"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i data-l="3"></i><i data-l="2"></i><i data-l="4"></i><i data-l="4"></i><i data-l="3"></i><i data-l="2"></i></div>
+        <span class="error-row__events">212</span>
+        <span class="error-row__seen">2 min ago</span>
+      </li>
+      <li class="error-row error-row--glimpse">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">DBConnection.ConnectionError</a><span class="flag flag--regressed">Back again</span></div>
+          <p class="error-row__message truncate">connection not available and request was dropped from queue after 2000ms</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/orders.ex:54</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="1,804 events in the last 24 hours"><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i data-l="2"></i><i data-l="3"></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i data-l="4"></i><i data-l="3"></i><i data-l="1"></i><i></i></div>
+        <span class="error-row__events">1,804</span>
+        <span class="error-row__seen">6 min ago</span>
+      </li>
+      <li class="error-row error-row--glimpse">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">Ecto.NoResultsError</a></div>
+          <p class="error-row__message truncate">expected at least one result but got none in query</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout_web/controllers/order_controller.ex:41</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="3,127 events in the last 24 hours"><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i><i data-l="1"></i><i data-l="2"></i><i data-l="1"></i></div>
+        <span class="error-row__events">3,127</span>
+        <span class="error-row__seen">11 min ago</span>
+      </li>
+      <li class="error-row error-row--glimpse">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">KeyError</a></div>
+          <p class="error-row__message truncate">key :customer_id not found in: %{&quot;invoice_id&quot; =&gt; 88214}</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/workers/invoice_mailer.ex:27</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="38 events in the last 24 hours"><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="1"></i><i></i><i></i><i></i><i data-l="1"></i><i></i></div>
+        <span class="error-row__events">38</span>
+        <span class="error-row__seen">40 min ago</span>
+      </li>
+      <li class="error-row error-row--glimpse">
+        <div class="error-row__main">
+          <div class="error-row__title"><a class="error-row__kind truncate" href="error-detail.html">Jason.DecodeError</a></div>
+          <p class="error-row__message truncate">unexpected byte at position 0: 0x3C (&quot;&lt;&quot;)</p>
+          <div class="error-row__meta"><span class="error-row__loc">lib/checkout/stripe/webhook.ex:63</span></div>
+        </div>
+        <div class="heat error-row__heat" role="img" aria-label="7 events in the last 24 hours"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i data-l="2"></i><i data-l="1"></i><i></i><i></i></div>
+        <span class="error-row__events">7</span>
+        <span class="error-row__seen">3 h ago</span>
+      </li>
+    </ul>
+
+    <!-- No unresolved errors, shown instead of the head and the rows (the tiles stay):
+    <div class="empty empty--glimpse">
+      <h3 class="empty__title">No unresolved errors</h3>
+      <p class="empty__text">New errors appear here as they happen.</p>
+    </div> -->
+  </section>
+
+  <!-- Analytics card: the last 7 days, read when the page opens (no live updates) -->
+  <section class="panel" id="overview-analytics">
+    <div class="panel__head">
+      <h2 class="section-title">Analytics <span class="faint">· Last 7 days</span></h2>
+      <a class="btn btn--sm" href="analytics.html">Full analytics</a>
+    </div>
+    <dl class="stats stats--3">
+      <div class="stat"><dt class="stat__label">Visitors</dt><dd class="stat__value">1,284</dd></div>
+      <div class="stat"><dt class="stat__label">Pageviews</dt><dd class="stat__value">4,512</dd></div>
+      <div class="stat"><dt class="stat__label">Bounce rate</dt><dd class="stat__value">42%</dd></div>
+    </dl>
+    <!-- The Analytics tab's chart, one bar per UTC day -->
+    <figure class="chart" style="--buckets:7">
+      <figcaption class="chart__caption"><span class="section-title">Visitors per day (UTC)</span><span class="faint">Peak 241</span></figcaption>
+      <div class="chart__plot" role="img" aria-label="Visitors per day (UTC), peak 241">
+        <div class="chart__slot" style="--position:0.0%"><span class="chart__bar" style="--height:54.8%"></span><span class="chart__tip">10 Nov · 139 visitors</span></div>
+        <div class="chart__slot" style="--position:16.7%"><span class="chart__bar" style="--height:71.7%"></span><span class="chart__tip">11 Nov · 182 visitors</span></div>
+        <div class="chart__slot" style="--position:33.3%"><span class="chart__bar" style="--height:86.3%"></span><span class="chart__tip">12 Nov · 219 visitors</span></div>
+        <div class="chart__slot" style="--position:50.0%"><span class="chart__bar" style="--height:95.0%"></span><span class="chart__tip">13 Nov · 241 visitors</span></div>
+        <div class="chart__slot" style="--position:66.7%"><span class="chart__bar" style="--height:78.4%"></span><span class="chart__tip">14 Nov · 199 visitors</span></div>
+        <div class="chart__slot" style="--position:83.3%"><span class="chart__bar" style="--height:60.7%"></span><span class="chart__tip">15 Nov · 154 visitors</span></div>
+        <div class="chart__slot" style="--position:100.0%"><span class="chart__bar" style="--height:59.1%"></span><span class="chart__tip">16 Nov · 150 visitors</span></div>
+      </div>
+      <div class="chart__labels" aria-hidden="true">
+        <span>10 Nov</span><span>11 Nov</span><span>12 Nov</span><span>13 Nov</span><span>14 Nov</span><span>15 Nov</span><span>16 Nov</span>
+      </div>
+      <table class="visually-hidden">
+        <caption>Visitors per day (UTC)</caption>
+        <tr><th scope="row">10 Nov</th><td>139</td></tr>
+        <tr><th scope="row">11 Nov</th><td>182</td></tr>
+        <tr><th scope="row">12 Nov</th><td>219</td></tr>
+        <tr><th scope="row">13 Nov</th><td>241</td></tr>
+        <tr><th scope="row">14 Nov</th><td>199</td></tr>
+        <tr><th scope="row">15 Nov</th><td>154</td></tr>
+        <tr><th scope="row">16 Nov</th><td>150</td></tr>
+      </table>
+    </figure>
+    <!-- Top 3 pages: the Analytics tab's table, inside the card -->
+    <table class="toplist toplist--glimpse">
+      <thead><tr><th scope="col">Top pages</th><th scope="col">Visitors</th><th scope="col">Pageviews</th></tr></thead>
+      <tbody>
+        <tr><td><span class="toplist__bar" style="--share:100%"></span><span class="toplist__name">/</span></td><td>812</td><td>1,104</td></tr>
+        <tr><td><span class="toplist__bar" style="--share:47%"></span><span class="toplist__name">/pricing</span></td><td>384</td><td>502</td></tr>
+        <tr><td><span class="toplist__bar" style="--share:30%"></span><span class="toplist__name">/docs/getting-started</span></td><td>241</td><td>690</td></tr>
+      </tbody>
+    </table>
+
+    <!-- No pageviews in the last 7 days, shown instead of the chart and the top pages (the tiles stay, showing zeros):
+    <div class="empty empty--glimpse">
+      <h3 class="empty__title">No pageviews in the last 7 days</h3>
+      <p class="empty__text">Pages appear here as people visit your app.</p>
+    </div> -->
+
+    <!-- Analytics off (analytics: false), shown instead of the tiles, chart and top pages; the Analytics tab's wording:
+    <div class="empty">
+      <h2 class="empty__title">Analytics is off</h2>
+      <p class="empty__text">Turn it on in Imison’s options and restart your app. Imison then counts pageviews on your app’s HTML pages and LiveView navigations.</p>
+      <pre class="codeblock analytics-off__code">config :my_app, Imison,
+  analytics: true</pre>
+    </div> -->
+  </section>
+</main>
+</body>
+</html>

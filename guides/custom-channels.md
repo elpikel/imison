@@ -250,7 +250,7 @@ To render it, read `summary`:
 ```elixir
 %{
   date: ~D[2026-11-11],
-  url: "https://app.example.com/errors",
+  url: "https://app.example.com/imison/errors",
   new: %{lines: [...], total: 3},
   came_back: %{lines: [...], total: 1},
   most_frequent: %{lines: [...], total: 9}
@@ -298,13 +298,13 @@ test "a new error opens an incident linked to the error" do
     occurrence_count: 1,
     first_seen_at: ~U[2026-11-12 09:30:00Z],
     last_seen_at: ~U[2026-11-12 09:30:00Z],
-    url: "https://app.example.com/errors/errors/42"
+    url: "https://app.example.com/imison/errors/42"
   }
 
   conf = Imison.Config.new(repo: MyApp.Repo, username: "test", password: "test")
   assert :ok = MyApp.Imison.PagerDuty.deliver(message, %{"routing_key" => "key"}, conf)
 
-  assert_received {:pagerduty, %{"dedup_key" => "imison-error-42", "links" => [%{"href" => "https://app.example.com/errors/errors/42"}]}}
+  assert_received {:pagerduty, %{"dedup_key" => "imison-error-42", "links" => [%{"href" => "https://app.example.com/imison/errors/42"}]}}
 end
 
 test "the daily summary is skipped" do

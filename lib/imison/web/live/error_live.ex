@@ -72,7 +72,7 @@ defmodule Imison.Web.ErrorLive do
   def render(assigns) do
     ~H"""
     <Layouts.app dashboard_path={@dashboard_path} flash={@flash}>
-      <.link class="back" navigate={@dashboard_path}>Back to errors</.link>
+      <.link class="back" navigate={Paths.errors(@dashboard_path)}>Back to errors</.link>
       <div class="detail">
         <div>
           <header class="error-head">
@@ -232,7 +232,7 @@ defmodule Imison.Web.ErrorLive do
   defp back_to_list(%{assigns: %{dashboard_path: dashboard_path}} = socket) do
     socket
     |> put_flash(:error, "That error doesn't exist. It may have been deleted.")
-    |> push_navigate(to: dashboard_path)
+    |> push_navigate(to: Paths.errors(dashboard_path))
   end
 
   defp request_rows(request) when is_map(request) do

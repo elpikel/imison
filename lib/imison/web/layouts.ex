@@ -35,14 +35,15 @@ defmodule Imison.Web.Layouts do
   end
 
   @doc """
-  The top bar with the main navigation (Errors and Notifications, `current`
-  marking the page's own link), the Live indicator when `live` says how the
+  The top bar with the brand linking to the overview, the main navigation
+  (Overview, Errors, Analytics and Notifications, `current` marking the
+  page's own link), the Live indicator when `live` says how the
   page updates (`:broadcasts` or `:polling`, each with its own title), and
   the Sign out button, and the page below it, headed by the
   `info` and `error` flash messages.
   """
   attr(:dashboard_path, :string, required: true)
-  attr(:current, :atom, values: [:errors, :notifications], default: :errors)
+  attr(:current, :atom, values: [:overview, :errors, :analytics, :notifications], default: :errors)
   attr(:flash, :map, default: %{})
   attr(:live, :atom, values: [nil, :broadcasts, :polling], default: nil)
   slot(:inner_block, required: true)
@@ -65,8 +66,18 @@ defmodule Imison.Web.Layouts do
         </svg>Imison
       </.link>
       <nav class="nav" aria-label="Main">
-        <.link class="nav__link" navigate={@dashboard_path} aria-current={current_page(@current, :errors)}>
+        <.link class="nav__link" navigate={@dashboard_path} aria-current={current_page(@current, :overview)}>
+          Overview
+        </.link>
+        <.link class="nav__link" navigate={Paths.errors(@dashboard_path)} aria-current={current_page(@current, :errors)}>
           Errors
+        </.link>
+        <.link
+          class="nav__link"
+          navigate={Paths.analytics(@dashboard_path)}
+          aria-current={current_page(@current, :analytics)}
+        >
+          Analytics
         </.link>
         <.link
           class="nav__link"

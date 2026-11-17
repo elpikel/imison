@@ -8,14 +8,16 @@ This is the design. `ARCHITECTURE.md` describes what is built so far; decisions 
 
 ## At a glance
 
-Imison catches errors inside the app, writes them to the app's database, pushes changes to the open dashboard and hands new or returning errors to the notifier. The dashed box is the extension point for further channels.
+Imison catches errors inside the app, writes them to the app's database, pushes changes to the open dashboard and hands new or returning errors to the notifier. With `analytics: true` it also counts the app's pageviews from Phoenix and LiveView telemetry. The dashed box is the extension point for further channels.
 
 ```mermaid
 flowchart LR
   subgraph host[Host Phoenix app]
     crash[Crashes, Phoenix and Oban exceptions, Imison.report/3]
+    pages[Page loads and LiveView navigations]
     subgraph imison[Imison supervisor]
       capture[Capture handlers] --> worker[Worker]
+      capture --> analytics[Analytics worker]
       worker --> notifier[Notifier]
       pruner[Pruner]
       digest[Digest] --> notifier
@@ -26,7 +28,9 @@ flowchart LR
     mailer[Host Swoosh mailer]
   end
   crash --> capture
+  pages --> capture
   worker --> repo
+  analytics --> repo
   worker --> pubsub --> dash
   dash --> repo
   pruner --> repo
@@ -52,6 +56,7 @@ There is no separate service to host. Imison reuses what the host app already ha
 | Email | The host's Swoosh mailer | No second set of mail credentials |
 | Auth | Built-in session login checked against config | Works in production without depending on the host's user system |
 | Background work | `Task.Supervisor`, a pruner process and a daily digest process inside the Imison supervisor | No hard dependency on Oban |
+| Analytics | Phoenix router-dispatch and LiveView telemetry, a buffering worker, a daily-salted visitor hash | Counted server-side: no script, cookie or public ingest route (ADR 0006) |
 
 ## Package structure
 
@@ -63,9 +68,10 @@ lib/imison/migration.ex          versioned up/down
 lib/imison/capture/              logger handler, telemetry handlers, worker
 lib/imison/errors/               schemas, fingerprint, upsert
 lib/imison/pruner.ex             pruner process (retention)
+lib/imison/analytics/            telemetry handlers, worker, pageview and salt schemas, visitor hash, metrics
 lib/imison/notifications/        notifier, daily digest process, Channel behaviour, Email, Webhook and Slack channels, HTTP (httpc)
 lib/imison/web/router.ex         imison_dashboard macro
-lib/imison/web/live/             error list, error detail, notifications, login
+lib/imison/web/live/             overview, error list, error detail, analytics, notifications
 lib/mix/tasks/imison.install.ex  Igniter installer
 priv/static/                      app.css, fonts, imison.js (LiveSocket init)
 dev/                              small Phoenix host app for development, not published
@@ -128,8 +134,8 @@ config :my_app, Imison, enabled: false, username: "test", password: "test"
 # 4. lib/my_app/application.ex, after the repo and the PubSub
 {Imison, Application.fetch_env!(:my_app, Imison)}
 
-# 5. priv/repo/migrations/20261112093108_add_imison.exs
-def up, do: Imison.Migration.up(version: 1)
+# 5. priv/repo/migrations/20261112093108_add_imison.exs (the current version)
+def up, do: Imison.Migration.up(version: 2)
 def down, do: Imison.Migration.down(version: 1)
 
 # 6. lib/my_app_web/router.ex
@@ -137,8 +143,12 @@ import Imison.Web.Router
 
 scope "/" do
   pipe_through :browser
-  imison_dashboard "/errors"
+  imison_dashboard "/imison"
 end
+
+# 7. lib/my_app_web/endpoint.ex: what analytics reads on LiveView navigations
+socket "/live", Phoenix.LiveView.Socket,
+  websocket: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]
 ```
 
 It also adds `:imison` to `import_deps` in `.formatter.exs`, so `imison_dashboard` is formatted without parentheses. The production login is read from the environment only in production: a fresh app boots in dev and test without `IMISON_USER` or `IMISON_PASSWORD` set, and `username` and `password` are set in those environments because they are required even with `enabled: false`. Unlike Oban Web, which mounts its dashboard inside the dev-only routes, Imison mounts the route for every environment, because it brings its own login.
@@ -156,8 +166,10 @@ An error is a group; an occurrence is one event in that group. There are no proj
 | `imison_rules` | When to notify | `trigger` (`new`, `regression`, `still_happening`, `digest`), `enabled` |
 | `imison_deliveries` | Sent notifications, for throttling and debugging | `channel_id`, `error_id`, `trigger`, `status`, `period`, `sent_at`; unique on (`channel_id`, `error_id`, `trigger`, `period`), and on (`channel_id`, `trigger`, `period`) where `error_id` is null (digests) |
 | `imison_login_failures` | Failed dashboard sign-ins of the last 15 minutes, for slowing down the next attempt | `failed_at` |
+| `imison_pageviews` | One pageview (version 2) | `visitor_id` (bigint hash), `path` (no query string), `source` (null for direct), `occurred_at` (indexed) |
+| `imison_salts` | The daily salt of the visitor hash, today's and yesterday's only (version 2) | `day` (primary key), `salt` |
 
-`Imison.Migration` is versioned the way `Oban.Migration` is: a release that changes the schema ships version 2, and the host adds a migration that calls `Imison.Migration.up(version: 2)`. The unique index on `fingerprint` makes capture an upsert. A pruner process deletes occurrences older than `retention_days` and keeps the error row.
+`Imison.Migration` is versioned the way `Oban.Migration` is: a release that changes the schema ships a new version, and the host adds a migration that calls `Imison.Migration.up(version: N)`. Version 1 holds the error, notification and sign-in tables; version 2 adds the two analytics tables. The unique index on `fingerprint` makes capture an upsert. A pruner process deletes occurrences older than `retention_days` and keeps the error row; it also deletes pageviews older than `analytics_retention_days` and salts older than yesterday, even with analytics off.
 
 ## How an error flows
 
@@ -169,6 +181,30 @@ An error is a group; an occurrence is one event in that group. There are no proj
 6. The notifier evaluates the rules for that event (new, regression, still happening), checks `imison_deliveries` for throttling and hands the message to each enabled channel.
 
 Errors raised inside Imison itself are only logged, never captured, so it cannot report on itself in a loop.
+
+## How a pageview flows
+
+Analytics is off unless `analytics: true`; the decision to count server-side is ADR 0006.
+
+1. The capture handlers process attaches one more telemetry handler, to Phoenix's `router_dispatch` stop event and LiveView's `mount` and `handle_params` stop events.
+2. A pageview is a GET answered 200 with HTML by the innermost router (a forwarded sub-router counts once), not a dashboard page and not from a bot (by user agent). On a LiveView socket, a `navigate` counts (recognised by the `_live_referer` connect param with `_mounts` at 0; the first LiveView of a page load doesn't count again), and so does a `patch` that changes the path. The visitor's IP and user agent come from `connect_info` there.
+3. The handler builds `%{path, referrer, host, ip, user_agent, occurred_at}` and casts it to the analytics worker, dropping it when the worker's mailbox is over its limit, like error capture.
+4. The worker buffers pageviews and writes them with one `insert_all` every second or every 100.
+5. Before writing, it fetches or creates the day's salt (`INSERT … ON CONFLICT DO NOTHING`, then a read, so every node uses the same one), hashes salt, IP and user agent into `visitor_id`, derives the source from the referrer, strips the query string and forgets the IP and user agent.
+6. The dashboard reads the metrics for today, 7 or 30 days (UTC) in SQL: visits split by a 30-minute gap (`lag` over each visitor's pageviews), bounce rate, an estimated visit duration, top pages and sources, and a chart.
+
+## Dashboard
+
+`imison_dashboard "/imison"` mounts every screen under that path, each behind the login:
+
+| Path | Screen |
+|---|---|
+| `<path>/` | Overview, the landing page: unresolved and new error counts, the 5 latest unresolved errors (live), the 7-day analytics numbers, chart and top pages |
+| `<path>/errors` | Error list (it was `<path>/` before the overview) |
+| `<path>/errors/<id>` | Error detail |
+| `<path>/analytics` | Analytics: visitors, pageviews, bounce rate, visit duration, chart, top pages and sources |
+| `<path>/notifications` | Channels, rules and test messages |
+| `<path>/login`, `<path>/logout` | Sign in and out |
 
 ## Running on multiple nodes
 
@@ -183,7 +219,8 @@ Every node runs its own Imison supervisor and all of them write to the same Post
 | "New error" notification | Each node that sees the error sends one | Only the node whose upsert inserted the row sends |
 | "Came back" notification | Each node that sees the regression sends one | Only the node whose upsert flipped the row from `resolved` sends (`record/2` tells it so) |
 | Throttled reminders and the daily digest | Every node's timer fires | A node first inserts a row in `imison_deliveries` under a unique index on (error, trigger, period) and sends only if the insert succeeded |
-| Pruning | Every node deletes old occurrences | Safe to repeat; the deletes are idempotent |
+| Pruning | Every node deletes old occurrences and pageviews | Safe to repeat; the deletes are idempotent |
+| Visitor hash | Each node would pick its own daily salt | The salt is stored per day with `INSERT … ON CONFLICT DO NOTHING` and read back, so every node uses the same one |
 | Failed-login slowdown | Attempts are spread over nodes | Counted in the database, not in node memory |
 | Rolling deploys | Old and new code run side by side | Migration versions only add tables, columns and indexes |
 
@@ -217,7 +254,7 @@ config :my_app, Imison,
   channels: [Imison.Notifications.Channels.Email, Imison.Notifications.Channels.Slack, MyApp.PagerChannel]
 ```
 
-`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The daily digest (`trigger: :digest`) is about no single error, so its error fields are `nil` and its `summary` holds the UTC `date`, `url` (the dashboard's error list, absent without `dashboard_url`) and three sections, `new`, `came_back` and `most_frequent`, each `%{lines: [...], total: n}`: at most 20 lines (5 for `most_frequent`), and `total` counting every error in the section that day so a channel can say how many it left out; each line has the error's id, kind, message, location, that day's occurrence `count` and `url`. `summary` is `nil` for every other message. Every channel receives digests and must render or skip them. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release. The Notifications screen shows one panel per listed module, built from the optional callbacks: titled by `label/0` (else the type), `describe/1` under the title, a field per `config_fields/0` entry (`hint` optional), an on/off switch, Save and "Send test" for that channel alone; the rules are one global block for every channel that's on. Field values are stored in the channel's `config` under their names; `:secret` values are never shown back, blank keeps the stored one and a "Remove" box next to a set secret clears it. `Imison.Notifications.Channels.Webhook` (type `webhook`, opt-in in `channels`) POSTs the message as JSON (built-in `JSON`, times in ISO 8601) to an http(s) `url`, signed when a `secret` is set (`x-imison-timestamp`, `x-imison-signature: sha256=<hex HMAC-SHA256 of "<timestamp>.<body>">`), through an internal `:httpc` wrapper with TLS peer and hostname verification, 5 s to connect and 5 s for the answer, and no redirects; a non-2xx answer is `{:error, {:http_status, status}}`. `Imison.Notifications.Channels.Slack` (type `slack`, opt-in in `channels`) posts `{"text": ...}` in Slack mrkdwn (headline, `*kind*: message`, location in backticks, counts, `<url|Open in Imison>`; the digest's three sections with capped lines and "and N more") to an incoming webhook through the same HTTP wrapper; its one setting, `webhook_url`, must start with `https://hooks.slack.com/` and is a `:secret` field, since the URL is the credential. `&`, `<` and `>` in the error's text are escaped so an error can't post a mention or a link. Telegram was considered for NOT-07 and not built.
+`Message` is channel-neutral: trigger, error kind and message, location, counts and a link back to the error (built from the `dashboard_url` option, absent without it). The daily digest (`trigger: :digest`) is about no single error, so its error fields are `nil` and its `summary` holds the UTC `date`, `url` (the dashboard's error list, `<dashboard_url>/errors`, absent without `dashboard_url`) and three sections, `new`, `came_back` and `most_frequent`, each `%{lines: [...], total: n}`: at most 20 lines (5 for `most_frequent`), and `total` counting every error in the section that day so a channel can say how many it left out; each line has the error's id, kind, message, location, that day's occurrence `count` and `url`. `summary` is `nil` for every other message. Every channel receives digests and must render or skip them. The email channel renders it and sends it through the host app's Swoosh mailer; recipients and rules come from the Notifications screen. `deliver/3` gets the channel's stored settings (for email, the recipients) and the instance config (for email, `mailer` and `from`; a host channel reads whatever it needs from it). Because the list is plain config, a host app can add its own channel module without a new Imison release. The Notifications screen shows one panel per listed module, built from the optional callbacks: titled by `label/0` (else the type), `describe/1` under the title, a field per `config_fields/0` entry (`hint` optional), an on/off switch, Save and "Send test" for that channel alone; the rules are one global block for every channel that's on. Field values are stored in the channel's `config` under their names; `:secret` values are never shown back, blank keeps the stored one and a "Remove" box next to a set secret clears it. `Imison.Notifications.Channels.Webhook` (type `webhook`, opt-in in `channels`) POSTs the message as JSON (built-in `JSON`, times in ISO 8601) to an http(s) `url`, signed when a `secret` is set (`x-imison-timestamp`, `x-imison-signature: sha256=<hex HMAC-SHA256 of "<timestamp>.<body>">`), through an internal `:httpc` wrapper with TLS peer and hostname verification, 5 s to connect and 5 s for the answer, and no redirects; a non-2xx answer is `{:error, {:http_status, status}}`. `Imison.Notifications.Channels.Slack` (type `slack`, opt-in in `channels`) posts `{"text": ...}` in Slack mrkdwn (headline, `*kind*: message`, location in backticks, counts, `<url|Open in Imison>`; the digest's three sections with capped lines and "and N more") to an incoming webhook through the same HTTP wrapper; its one setting, `webhook_url`, must start with `https://hooks.slack.com/` and is a `:secret` field, since the URL is the credential. `&`, `<` and `>` in the error's text are escaped so an error can't post a mention or a link. Telegram was considered for NOT-07 and not built.
 
 ## Configuration
 
@@ -231,10 +268,13 @@ Options live under the host app's config key, as with Oban. In production the lo
 | `mailer` | For email | The host's Swoosh mailer module |
 | `from` | For email | Sender address |
 | `release` | No | Version label stored with each occurrence |
-| `dashboard_url` | No | Absolute URL where `imison_dashboard` is mounted, e.g. `https://app.example.com/errors`; notifications link to the error's page under it, and carry no link without it |
+| `dashboard_url` | No | Absolute URL where `imison_dashboard` is mounted, e.g. `https://app.example.com/imison`; notifications link to the error's page under it, and carry no link without it |
 | `retention_days` | No | Days to keep occurrences, default 30 |
 | `channels` | No | Notification channel modules implementing `Imison.Notifications.Channel`, default email only (none when Swoosh is absent) |
-| `enabled` | No | `false` turns capture off, for the test environment |
+| `enabled` | No | `false` turns capture, analytics, notifications and pruning off, for the test environment |
+| `analytics` | No | `true` counts pageviews and visitors, default `false` |
+| `analytics_retention_days` | No | Days to keep pageviews, default 90 |
+| `remote_ip_header` | No | Header holding the client IP behind a proxy (first address used), default none (the peer address); on the LiveView socket only `x-*` headers are available |
 | `filter` | No | Keys replaced with `[FILTERED]` in params, headers and metadata before storage; defaults to `password`, `token`, `secret`, `authorization` and `cookie` |
 | `ignore` | No | Exception modules that are never recorded, default none |
 | `prefix` | No | Postgres schema holding Imison's tables, default `public`; must match the `prefix:` given to the migration |

@@ -16,10 +16,23 @@ defmodule Imison.Web.ErrorsLiveTest do
   @listed_kinds ".error-row .error-row__kind"
   @flagged_kinds ".error-row__title:has(.flag--regressed) .error-row__kind"
 
-  test "the dashboard mounted with imison_dashboard serves the error list page" do
+  test "the nav links Overview, the error list, Analytics and Notifications, marks Errors, and the brand links to the overview" do
     start_imison(name: Dashboard, enabled: false)
 
-    {:ok, view, html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
+
+    assert texts(view, ".nav .nav__link") == ["Overview", "Errors", "Analytics", "Notifications"]
+    assert has_element?(view, ".nav .nav__link[href='/errors']", "Overview")
+    assert has_element?(view, ".nav .nav__link[href='/errors/errors'][aria-current=page]", "Errors")
+    assert has_element?(view, ".nav .nav__link[href='/errors/analytics']", "Analytics")
+    assert has_element?(view, ".nav .nav__link[href='/errors/notifications']", "Notifications")
+    assert has_element?(view, ".topbar .brand[href='/errors']", "Imison")
+  end
+
+  test "the dashboard mounted with imison_dashboard serves the error list page at <path>/errors" do
+    start_imison(name: Dashboard, enabled: false)
+
+    {:ok, view, html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert html =~ ~s(<h1 class="page__title">Errors</h1>)
     assert has_element?(view, ".topbar .brand", "Imison")
@@ -30,16 +43,17 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "the dashboard mounted at another path serves the error list page there" do
     start_imison(name: Dashboard, enabled: false)
 
-    {:ok, view, _html} = live(sign_in("/admin/errors", "admin", "secret"), "/admin/errors")
+    {:ok, view, _html} = live(sign_in("/admin/errors", "admin", "secret"), "/admin/errors/errors")
 
-    assert has_element?(view, ".nav .nav__link[href='/admin/errors']", "Errors")
+    assert has_element?(view, ".nav .nav__link[href='/admin/errors/errors']", "Errors")
     assert has_element?(view, ".panel .empty .empty__title", "No unresolved errors")
   end
 
   test "the page loads its stylesheet and script from Imison under the mount path" do
     start_imison(name: Dashboard, enabled: false)
 
-    document = "/errors" |> sign_in("admin", "secret") |> get("/errors") |> html_response(200) |> LazyHTML.from_document()
+    document =
+      "/errors" |> sign_in("admin", "secret") |> get("/errors/errors") |> html_response(200) |> LazyHTML.from_document()
 
     assert [stylesheet] = document |> LazyHTML.query("link[rel=stylesheet]") |> LazyHTML.attribute("href")
     assert [script] = document |> LazyHTML.query("script[src]") |> LazyHTML.attribute("src")
@@ -50,7 +64,8 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "the page makes no third-party requests" do
     start_imison(name: Dashboard, enabled: false)
 
-    document = "/errors" |> sign_in("admin", "secret") |> get("/errors") |> html_response(200) |> LazyHTML.from_document()
+    document =
+      "/errors" |> sign_in("admin", "secret") |> get("/errors/errors") |> html_response(200) |> LazyHTML.from_document()
 
     urls =
       (document |> LazyHTML.query("[href]") |> LazyHTML.attribute("href")) ++
@@ -63,20 +78,20 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "a visitor without a session is redirected to the login page" do
     start_imison(name: Dashboard, enabled: false)
 
-    assert {:error, {:redirect, %{to: "/errors/login"}}} = live(browser_conn(), "/errors")
-    assert browser_conn() |> get("/errors") |> redirected_to() == "/errors/login"
+    assert {:error, {:redirect, %{to: "/errors/login"}}} = live(browser_conn(), "/errors/errors")
+    assert browser_conn() |> get("/errors/errors") |> redirected_to() == "/errors/login"
   end
 
   test "a visitor without a session is redirected to the login page of the dashboard's mount path" do
     start_imison(name: Dashboard, enabled: false)
 
-    assert {:error, {:redirect, %{to: "/admin/errors/login"}}} = live(browser_conn(), "/admin/errors")
+    assert {:error, {:redirect, %{to: "/admin/errors/login"}}} = live(browser_conn(), "/admin/errors/errors")
   end
 
   test "the top bar has a sign-out button" do
     start_imison(name: Dashboard, enabled: false)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".topbar .topbar__end form[method=post][action='/errors/logout'] button", "Sign out")
   end
@@ -85,7 +100,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Imison, enabled: false)
 
     assert_raise RuntimeError, ~r/No Imison instance named `Imison.Test.Dashboard` is running/, fn ->
-      live(browser_conn(), "/errors")
+      live(browser_conn(), "/errors/errors")
     end
   end
 
@@ -96,7 +111,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     [kind: "MatchError"] |> record() |> set_status(:resolved)
     [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert texts(view, @listed_kinds) == ["ArgumentError", "KeyError"]
     assert has_element?(view, ".tabs__item[aria-current=true]", "Unresolved")
@@ -119,7 +134,7 @@ defmodule Imison.Web.ErrorsLiveTest do
       occurred_at: minutes_ago(5)
     )
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".error-row .error-row__kind", "KeyError")
     assert has_element?(view, ".error-row .error-row__message", "key :order_id not found")
@@ -137,7 +152,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     |> where([error: error], error.id == ^error.id)
     |> Repo.update_all(set: [occurrence_count: 1_804_250])
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".error-row .error-row__events", "1,804,250")
   end
@@ -148,7 +163,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "ArgumentError", occurred_at: minutes_ago(3 * 60))
     record(kind: "MatchError", occurred_at: minutes_ago(2 * 24 * 60))
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".error-row .error-row__seen", "just now")
     assert has_element?(view, ".error-row .error-row__seen", "3 h ago")
@@ -160,7 +175,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "OldestError", occurred_at: minutes_ago(500))
     for minutes <- 1..100, do: record(kind: "Error#{minutes}", occurred_at: minutes_ago(minutes))
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert texts(view, @listed_kinds) == Enum.map(1..100, &"Error#{&1}")
     assert has_element?(view, ".errors__foot", "The 100 most recently seen of 101 errors")
@@ -171,7 +186,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError")
     record(kind: "ArgumentError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".errors__foot", "2 errors")
   end
@@ -185,7 +200,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     [kind: "Postgrex.Error"] |> record() |> set_status(:ignored)
     [kind: "ExitError"] |> record() |> set_status(:ignored)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert tab_counts(view) == %{"Unresolved" => "2", "Resolved" => "1", "Ignored" => "3"}
   end
@@ -195,11 +210,11 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError")
     [kind: "MatchError"] |> record() |> set_status(:resolved)
     [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     view |> element(".tabs__item", "Resolved") |> render_click()
 
-    assert_patch(view, "/errors?status=resolved")
+    assert_patch(view, "/errors/errors?status=resolved")
     assert texts(view, @listed_kinds) == ["MatchError"]
     assert has_element?(view, ".tabs__item[aria-current=true]", "Resolved")
   end
@@ -209,11 +224,11 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError")
     [kind: "MatchError"] |> record() |> set_status(:resolved)
     [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     view |> element(".tabs__item", "Ignored") |> render_click()
 
-    assert_patch(view, "/errors?status=ignored")
+    assert_patch(view, "/errors/errors?status=ignored")
     assert texts(view, @listed_kinds) == ["Jason.DecodeError"]
   end
 
@@ -222,7 +237,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError")
     [kind: "Jason.DecodeError"] |> record() |> set_status(:ignored)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=ignored")
 
     assert texts(view, @listed_kinds) == ["Jason.DecodeError"]
     assert has_element?(view, ".tabs__item[aria-current=true]", "Ignored")
@@ -231,11 +246,11 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "picking the Unresolved tab goes back to the dashboard's plain URL" do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=resolved")
 
     view |> element(".tabs__item", "Unresolved") |> render_click()
 
-    assert_patch(view, "/errors")
+    assert_patch(view, "/errors/errors")
     assert texts(view, @listed_kinds) == ["KeyError"]
   end
 
@@ -243,11 +258,11 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "DBConnection.ConnectionError", message: "connection not available, request dropped from queue")
     record(kind: "KeyError", message: "key :customer_id not found")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     view |> form(".toolbar", q: "Request Dropped") |> render_change()
 
-    assert_patch(view, "/errors?q=Request+Dropped")
+    assert_patch(view, "/errors/errors?q=Request+Dropped")
     assert texts(view, @listed_kinds) == ["DBConnection.ConnectionError"]
   end
 
@@ -256,7 +271,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "Ecto.NoResultsError")
     record(kind: "KeyError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=noresults")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=noresults")
 
     assert texts(view, @listed_kinds) == ["Ecto.NoResultsError"]
   end
@@ -266,7 +281,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError", stacktrace: [frame("lib/checkout/shipping/rates.ex")])
     record(kind: "ArgumentError", stacktrace: [frame("lib/checkout/cart.ex")])
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=SHIPPING/rates")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=SHIPPING/rates")
 
     assert texts(view, @listed_kinds) == ["KeyError"]
   end
@@ -276,11 +291,11 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError", message: "timeout while charging")
     [kind: "MatchError", message: "timeout while shipping"] |> record() |> set_status(:resolved)
     [kind: "ArgumentError", message: "bad currency"] |> record() |> set_status(:resolved)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=resolved")
 
     view |> form(".toolbar", q: "timeout") |> render_change()
 
-    assert_patch(view, "/errors?status=resolved&q=timeout")
+    assert_patch(view, "/errors/errors?status=resolved&q=timeout")
     assert texts(view, @listed_kinds) == ["MatchError"]
   end
 
@@ -290,7 +305,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "ArgumentError", message: "bad currency")
     [kind: "MatchError", message: "timeout while shipping"] |> record() |> set_status(:resolved)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=timeout")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=timeout")
 
     assert tab_counts(view) == %{"Unresolved" => "1", "Resolved" => "1", "Ignored" => "0"}
   end
@@ -299,11 +314,11 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     [kind: "MatchError", message: "timeout while shipping"] |> record() |> set_status(:resolved)
     [kind: "ArgumentError", message: "bad currency"] |> record() |> set_status(:resolved)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=timeout")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=timeout")
 
     view |> element(".tabs__item", "Resolved") |> render_click()
 
-    assert_patch(view, "/errors?status=resolved&q=timeout")
+    assert_patch(view, "/errors/errors?status=resolved&q=timeout")
     assert texts(view, @listed_kinds) == ["MatchError"]
   end
 
@@ -312,7 +327,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "File.Error", message: "disk 100% full")
     record(kind: "KeyError", message: "key :customer_id not found")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=%25")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=%25")
 
     assert texts(view, @listed_kinds) == ["File.Error"]
   end
@@ -322,7 +337,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError", message: "key :customer_id not found")
     record(kind: "File.Error", message: "disk 100% full")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=_")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=_")
 
     assert texts(view, @listed_kinds) == ["KeyError"]
   end
@@ -332,7 +347,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "File.Error", message: ~S(cannot open C:\tmp\report.csv))
     record(kind: "KeyError", message: "key :customer_id not found")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=%5C")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=%5C")
 
     assert texts(view, @listed_kinds) == ["File.Error"]
   end
@@ -341,7 +356,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=resolved")
 
     assert texts(view, @listed_kinds) == []
     assert has_element?(view, ".panel .empty .empty__title", "No resolved errors")
@@ -351,7 +366,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=nothing+like+this")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=nothing+like+this")
 
     assert texts(view, @listed_kinds) == []
     assert has_element?(view, ".panel .empty .empty__title", "No matching errors")
@@ -361,7 +376,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q[]=nothing")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q[]=nothing")
 
     assert texts(view, @listed_kinds) == ["KeyError"]
   end
@@ -370,7 +385,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q[text]=nothing")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q[text]=nothing")
 
     assert texts(view, @listed_kinds) == ["KeyError"]
   end
@@ -381,7 +396,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "DBConnection.ConnectionError")
     record(kind: "KeyError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert texts(view, @flagged_kinds) == ["DBConnection.ConnectionError"]
     assert has_element?(view, ".error-row .flag--regressed", "Back again")
@@ -392,7 +407,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     [kind: "DBConnection.ConnectionError"] |> record() |> set_status(:resolved)
     [kind: "DBConnection.ConnectionError"] |> record() |> set_status(:ignored)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=ignored")
 
     assert texts(view, @listed_kinds) == ["DBConnection.ConnectionError"]
     assert texts(view, @flagged_kinds) == []
@@ -404,7 +419,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     error = record(kind: "KeyError", occurred_at: start_of(hour))
     record(kind: "KeyError", occurred_at: start_of(DateTime.shift(hour, hour: -23)))
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert heat_levels(view, error) == [
              "4",
@@ -443,7 +458,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     count_in_hour(error, DateTime.shift(hour, hour: -2), 6)
     count_in_hour(error, hour, 8)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert heat_levels(view, error) ==
              List.duplicate(nil, 17) ++ ["1", nil, "2", nil, "3", nil, "4"]
@@ -456,7 +471,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     count_in_hour(error, DateTime.shift(hour, hour: -12), 1_200)
     count_in_hour(error, hour, 34)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(
              view,
@@ -468,7 +483,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     error = record(kind: "KeyError", occurred_at: start_of(current_hour()))
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, "#error-#{error.id} .heat[aria-label='1 event in the last 24 hours']")
   end
@@ -479,7 +494,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     error = record(kind: "KeyError", occurred_at: start_of(DateTime.shift(hour, day: -1)))
     count_in_hour(error, DateTime.shift(hour, hour: -30), 5)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert heat_levels(view, error) == List.duplicate(nil, 24)
     assert has_element?(view, "#error-#{error.id} .heat[aria-label='0 events in the last 24 hours']")
@@ -488,7 +503,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "a newly recorded error appears in the open list without a reload" do
     start_imison(name: Dashboard, pubsub: PubSub)
     record(kind: "KeyError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     capture_and_wait(kind: "ArgumentError", occurred_at: DateTime.utc_now())
 
@@ -500,7 +515,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, pubsub: PubSub)
     current_hour()
     error = record(kind: "KeyError", occurred_at: minutes_ago(3 * 60))
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     assert List.last(heat_levels(view, error)) == nil
 
     capture_and_wait(kind: "KeyError", occurred_at: DateTime.utc_now())
@@ -514,7 +529,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "the tab counts update as errors are recorded" do
     start_imison(name: Dashboard, pubsub: PubSub)
     [kind: "MatchError"] |> record() |> set_status(:resolved)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     assert tab_counts(view) == %{"Unresolved" => "0", "Resolved" => "1", "Ignored" => "0"}
 
     capture_and_wait(kind: "MatchError", occurred_at: DateTime.utc_now())
@@ -524,7 +539,7 @@ defmodule Imison.Web.ErrorsLiveTest do
 
   test "an error recorded right after a live update still appears, within a second" do
     start_imison(name: Dashboard, pubsub: PubSub)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     capture_and_wait(kind: "KeyError", occurred_at: DateTime.utc_now())
     assert texts(view, @listed_kinds) == ["KeyError"]
 
@@ -536,7 +551,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "with pubsub configured, the connected list shows the live indicator in the top bar" do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".topbar .topbar__end .live .live__dot")
     assert has_element?(view, ".topbar .topbar__end .live", "Live")
@@ -545,7 +560,8 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "the page as first served, before it connects, shows no live indicator" do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
 
-    document = "/errors" |> sign_in("admin", "secret") |> get("/errors") |> html_response(200) |> LazyHTML.from_document()
+    document =
+      "/errors" |> sign_in("admin", "secret") |> get("/errors/errors") |> html_response(200) |> LazyHTML.from_document()
 
     assert document |> LazyHTML.query(".topbar") |> Enum.count() == 1
     assert document |> LazyHTML.query(".live") |> Enum.empty?()
@@ -553,7 +569,7 @@ defmodule Imison.Web.ErrorsLiveTest do
 
   test "without pubsub the open list shows a newly recorded error once the refresh interval passes" do
     start_imison(name: Dashboard)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     capture_and_wait(kind: "KeyError", occurred_at: DateTime.utc_now())
 
@@ -563,7 +579,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "without pubsub a refresh shows the errors recorded since the page opened and updates the tab counts" do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     assert texts(view, @listed_kinds) == ["KeyError"]
 
     record(kind: "ArgumentError", occurred_at: DateTime.utc_now())
@@ -575,7 +591,7 @@ defmodule Imison.Web.ErrorsLiveTest do
 
   test "with pubsub but no connected nodes the open list shows an error another node recorded after a refresh" do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     record(kind: "KeyError")
 
     refresh(view)
@@ -586,7 +602,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "with pubsub and a connected node a refresh does not reload the list" do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
     connect_another_node()
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     record(kind: "KeyError")
 
     refresh(view)
@@ -599,7 +615,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     kept = record(kind: "KeyError", message: "timeout while charging")
     resolved_elsewhere = record(kind: "ArgumentError", message: "timeout in mailer")
     record(kind: "MatchError", message: "no match")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?q=timeout")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?q=timeout")
     tick(view, kept)
     tick(view, resolved_elsewhere)
     set_status(resolved_elsewhere, :resolved)
@@ -616,7 +632,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "without pubsub the Live indicator says the list refreshes every few seconds" do
     start_imison(name: Dashboard, enabled: false)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".topbar .live[title='Refreshes from the database every few seconds.']", "Live")
   end
@@ -624,7 +640,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "with pubsub but no connected nodes the Live indicator says the list refreshes every few seconds" do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".topbar .live[title='Refreshes from the database every few seconds.']")
   end
@@ -633,7 +649,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
     connect_another_node()
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert has_element?(view, ".topbar .live[title='Connected. New events appear without reloading.']")
   end
@@ -643,7 +659,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "KeyError")
 
     {result, log} =
-      with_log([metadata: [:domain]], fn -> live(sign_in("/errors", "admin", "secret"), "/errors") end)
+      with_log([metadata: [:domain]], fn -> live(sign_in("/errors", "admin", "secret"), "/errors/errors") end)
 
     assert {:ok, view, _html} = result
     assert texts(view, @listed_kinds) == ["KeyError"]
@@ -656,7 +672,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     first = record(kind: "KeyError")
     second = record(kind: "ArgumentError")
     third = record(kind: "MatchError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(view, first)
     tick(view, second)
 
@@ -673,7 +689,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     first = record(kind: "KeyError")
     second = record(kind: "ArgumentError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(view, first)
     tick(view, second)
 
@@ -686,7 +702,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "marking selected resolved errors unresolved from the bulk bar stores them as unresolved" do
     start_imison(name: Dashboard, enabled: false)
     error = [kind: "KeyError"] |> record() |> set_status(:resolved)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=resolved")
     tick(view, error)
 
     view |> element(".bulkbar .btn", "Mark unresolved") |> render_click()
@@ -697,7 +713,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "marking selected ignored errors unresolved from the bulk bar stores them as unresolved" do
     start_imison(name: Dashboard, enabled: false)
     error = [kind: "KeyError"] |> record() |> set_status(:ignored)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=ignored")
     tick(view, error)
 
     view |> element(".bulkbar .btn", "Mark unresolved") |> render_click()
@@ -710,9 +726,9 @@ defmodule Imison.Web.ErrorsLiveTest do
     unresolved = record(kind: "KeyError")
     resolved = [kind: "MatchError"] |> record() |> set_status(:resolved)
     ignored = [kind: "ArgumentError"] |> record() |> set_status(:ignored)
-    {:ok, unresolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
-    {:ok, resolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=resolved")
-    {:ok, ignored_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors?status=ignored")
+    {:ok, unresolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
+    {:ok, resolved_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=resolved")
+    {:ok, ignored_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors?status=ignored")
 
     tick(unresolved_view, unresolved)
     tick(resolved_view, resolved)
@@ -728,7 +744,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     first = record(kind: "KeyError")
     second = record(kind: "ArgumentError")
     third = record(kind: "MatchError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     view |> element(".errors__head .checkbox") |> render_click()
 
@@ -740,7 +756,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
     record(kind: "ArgumentError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     view |> element(".errors__head .checkbox") |> render_click()
 
     view |> element(".errors__head .checkbox") |> render_click()
@@ -753,7 +769,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     first = record(kind: "KeyError")
     record(kind: "ArgumentError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     tick(view, first)
 
@@ -764,7 +780,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     record(kind: "KeyError")
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     refute has_element?(view, ".bulkbar")
   end
@@ -772,7 +788,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "unticking the only selected row hides the bulk bar" do
     start_imison(name: Dashboard, enabled: false)
     error = record(kind: "KeyError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(view, error)
 
     tick(view, error)
@@ -783,7 +799,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "switching tabs clears the selection" do
     start_imison(name: Dashboard, enabled: false)
     error = record(kind: "KeyError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(view, error)
 
     view |> element(".tabs__item", "Resolved") |> render_click()
@@ -795,7 +811,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "searching clears the selection" do
     start_imison(name: Dashboard, enabled: false)
     error = record(kind: "KeyError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(view, error)
 
     view |> form(".toolbar", q: "Key") |> render_change()
@@ -807,7 +823,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     first = record(kind: "KeyError")
     record(kind: "ArgumentError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(view, first)
 
     view |> element(".bulkbar .btn", "Resolve") |> render_click()
@@ -821,7 +837,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     record(kind: "ArgumentError")
     {:ok, 1} = Errors.set_muted(Imison.config(Dashboard), [muted.id], true)
 
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     assert texts(view, @listed_kinds) == ["ArgumentError", "KeyError"]
     assert tab_counts(view)["Unresolved"] == "2"
@@ -831,7 +847,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "an open list marks an error muted from its detail page without a reload" do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
     error = record(kind: "KeyError")
-    {:ok, list, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, list, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     {:ok, detail, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
 
     detail |> element(".rail .btn", "Mute notifications") |> render_click()
@@ -843,8 +859,8 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
     first = record(kind: "KeyError")
     record(kind: "ArgumentError")
-    {:ok, acting_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
-    {:ok, watching_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, acting_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
+    {:ok, watching_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(acting_view, first)
 
     acting_view |> element(".bulkbar .btn", "Resolve") |> render_click()
@@ -857,8 +873,8 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, pubsub: PubSub, enabled: false)
     first = record(kind: "KeyError")
     record(kind: "ArgumentError")
-    {:ok, acting_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
-    {:ok, watching_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, acting_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
+    {:ok, watching_view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(acting_view, first)
     tick(watching_view, first)
 
@@ -870,7 +886,7 @@ defmodule Imison.Web.ErrorsLiveTest do
   test "a status event with an unknown status changes nothing and the page keeps working" do
     start_imison(name: Dashboard, enabled: false)
     error = record(kind: "KeyError")
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
     tick(view, error)
 
     render_click(view, "set_status", %{"status" => "deleted"})
@@ -884,7 +900,7 @@ defmodule Imison.Web.ErrorsLiveTest do
     start_imison(name: Dashboard, enabled: false)
     listed = record(kind: "KeyError")
     unlisted = [kind: "MatchError"] |> record() |> set_status(:ignored)
-    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors")
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors")
 
     render_click(view, "toggle_selection", %{"id" => "abc"})
     render_click(view, "toggle_selection", %{"id" => Integer.to_string(unlisted.id)})

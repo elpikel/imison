@@ -17,4 +17,12 @@ defmodule Imison.Web.Format do
 
   @spec utc_time(DateTime.t()) :: String.t()
   def utc_time(datetime), do: Calendar.strftime(datetime, "%-d %b %Y, %H:%M:%S UTC")
+
+  @spec duration(non_neg_integer()) :: String.t()
+  def duration(seconds) when seconds < 60, do: "#{seconds}s"
+  def duration(seconds) when seconds < 3600, do: "#{div(seconds, 60)}m #{rem(seconds, 60)}s"
+  def duration(seconds), do: "#{div(seconds, 3600)}h #{seconds |> rem(3600) |> div(60)}m"
+
+  @spec percentage(0..100) :: String.t()
+  def percentage(percent), do: "#{percent}%"
 end

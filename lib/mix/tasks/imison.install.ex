@@ -17,7 +17,8 @@ defmodule Mix.Tasks.Imison.Install.Docs do
     """
     Prints the steps to install Imison in a Phoenix app by hand, filled with the
     app's name and modules: its config, its place in the supervision tree, the
-    migration that creates its tables, the dashboard route and the formatter.
+    migration that creates its tables, the dashboard route, the formatter and the
+    LiveView socket's `connect_info`, plus the option that turns analytics on.
     It changes no file.
 
     ## Example
@@ -56,9 +57,13 @@ defmodule Mix.Tasks.Imison.Install.Docs do
       * the application's children: `{Imison, Application.fetch_env!(:my_app, Imison)}`
         after the repo and the PubSub
       * a migration `add_imison` calling `Imison.Migration`
-      * the router: `import Imison.Web.Router` and `imison_dashboard "/errors"`
+      * the router: `import Imison.Web.Router` and `imison_dashboard "/imison"`
         in a scope piped through `:browser`
       * `.formatter.exs`: `:imison` in `import_deps`
+      * the endpoint: `:peer_data`, `:user_agent` and `:x_headers` in the `"/live"`
+        socket's `connect_info` (websocket, and longpoll when it has one), for analytics
+
+    Analytics stays off until `analytics: true` is added to the Imison config.
 
     A change that is already there is skipped, so running the task again changes nothing.
     """
@@ -76,6 +81,7 @@ if Code.ensure_loaded?(Igniter) do
     alias Igniter.Code.Common
     alias Igniter.Code.Function
     alias Igniter.Code.Keyword, as: KeywordCode
+    alias Igniter.Code.List, as: ListCode
     alias Igniter.Libs.Ecto, as: EctoLibrary
     alias Igniter.Libs.Phoenix, as: PhoenixLibrary
     alias Igniter.Project.Application, as: ProjectApplication
@@ -121,10 +127,14 @@ if Code.ensure_loaded?(Igniter) do
       |> supervise(host)
       |> generate_migration(host.repo)
       |> mount_dashboard()
+      |> share_visitor_details_with_live_socket()
       |> Igniter.add_notice("""
       Imison is installed. Run `mix ecto.migrate` to create its tables; the
       dashboard is at #{Install.dashboard_path()}. In production, set IMISON_USER and
       IMISON_PASSWORD; the dev login is in config/dev.exs.
+
+      To count pageviews, add `analytics: true` to the Imison config. Behind a proxy,
+      also set `remote_ip_header: "x-forwarded-for"` (or the header your proxy sets).
       """)
     end
 
@@ -186,7 +196,7 @@ if Code.ensure_loaded?(Igniter) do
         body: """
         def up, do: Imison.Migration.up(version: #{Postgres.current_version()})
 
-        def down, do: Imison.Migration.down(version: #{Postgres.current_version()})
+        def down, do: Imison.Migration.down(version: #{Postgres.initial_version()})
         """,
         on_exists: :skip
       )
@@ -251,6 +261,73 @@ if Code.ensure_loaded?(Igniter) do
 
     defp move_to_dashboard_import(zipper) do
       Function.move_to_function_call(zipper, :import, 1, &Function.argument_equals?(&1, 0, Imison.Web.Router))
+    end
+
+    defp share_visitor_details_with_live_socket(igniter) do
+      case PhoenixLibrary.select_endpoint(igniter) do
+        {igniter, nil} ->
+          Igniter.add_warning(igniter, live_socket_manual_step("No Phoenix endpoint found."))
+
+        {igniter, endpoint} ->
+          ProjectModule.find_and_update_module!(igniter, endpoint, &add_visitor_details_to_live_socket/1)
+      end
+    end
+
+    defp add_visitor_details_to_live_socket(zipper) do
+      with {:ok, socket} <- move_to_live_socket(zipper),
+           {:ok, options} <- Function.move_to_nth_argument(socket, 2),
+           {:ok, options} <- Common.within(options, &add_visitor_details_to_transport(&1, :websocket)) do
+        add_visitor_details_to_longpoll(options)
+      else
+        :error ->
+          {:warning,
+           live_socket_manual_step(
+             "Could not find the websocket `connect_info` of the `#{Install.live_socket_path()}` socket."
+           )}
+      end
+    end
+
+    defp move_to_live_socket(zipper) do
+      Function.move_to_function_call_in_current_scope(
+        zipper,
+        :socket,
+        3,
+        &Function.argument_equals?(&1, 0, Install.live_socket_path())
+      )
+    end
+
+    defp add_visitor_details_to_longpoll(options) do
+      case Common.within(options, &add_visitor_details_to_transport(&1, :longpoll)) do
+        {:ok, updated_options} -> {:ok, updated_options}
+        :error -> {:ok, options}
+      end
+    end
+
+    defp add_visitor_details_to_transport(options, transport) do
+      with {:ok, transport_options} <- KeywordCode.get_key(options, transport),
+           {:ok, connect_info} <- KeywordCode.get_key(transport_options, :connect_info),
+           true <- ListCode.list?(connect_info) do
+        Install.visitor_details()
+        |> Enum.reverse()
+        |> Enum.reduce({:ok, connect_info}, fn detail, {:ok, connect_info} ->
+          ListCode.prepend_new_to_list(connect_info, detail)
+        end)
+      else
+        _missing -> :error
+      end
+    end
+
+    defp live_socket_manual_step(reason) do
+      visitor_details = Enum.map_join(Install.visitor_details(), ", ", &inspect/1)
+
+      """
+      #{reason} Add #{visitor_details} to the LiveView socket's `connect_info`
+      in your endpoint by hand, so analytics can read the visitor's address and user agent:
+
+          socket "#{Install.live_socket_path()}", Phoenix.LiveView.Socket,
+            websocket: [connect_info: [#{visitor_details}, session: @session_options]],
+            longpoll: [connect_info: [#{visitor_details}, session: @session_options]]
+      """
     end
 
     defp pubsub(igniter, app_name) do

@@ -10,13 +10,15 @@ defmodule Imison.Web.Router do
       scope "/" do
         pipe_through :browser
 
-        imison_dashboard "/errors"
+        imison_dashboard "/imison"
       end
 
-  The error list is at `path`, each error's detail page at
-  `<path>/errors/<id>` and the notifications screen, where the email
-  recipients and rules are set and a test email is sent, at
-  `<path>/notifications`.
+  `path` itself opens the overview, a glimpse of the errors and of the
+  analytics, where signing in lands. The error list is at `<path>/errors` and
+  each error's detail page at `<path>/errors/<id>`. The Analytics
+  tab, with the pageviews counted when `analytics: true` is set, is at
+  `<path>/analytics`, and the notifications screen, where the channels and
+  rules are set and a test message is sent, at `<path>/notifications`.
 
   Every dashboard page asks for the login configured on the Imison instance
   (`username` and `password`): the login page at `<path>/login` signs in, and
@@ -57,6 +59,11 @@ defmodule Imison.Web.Router do
       scope path, alias: false, as: false do
         import Phoenix.LiveView.Router, only: [live: 4, live_session: 3]
 
+        alias Imison.Web.AnalyticsLive
+        alias Imison.Web.ErrorLive
+        alias Imison.Web.ErrorsLive
+        alias Imison.Web.NotificationsLive
+        alias Imison.Web.OverviewLive
         alias Imison.Web.Router
         alias Imison.Web.SessionController
 
@@ -70,9 +77,11 @@ defmodule Imison.Web.Router do
           root_layout: {Imison.Web.Layouts, :root},
           on_mount: {Imison.Web.Auth, :require_sign_in},
           session: Router.__session__(opts, dashboard_path) do
-          live "/", Imison.Web.ErrorsLive, :index, as: opts[:as]
-          live "/errors/:id", Imison.Web.ErrorLive, :show, as: opts[:as]
-          live "/notifications", Imison.Web.NotificationsLive, :index, as: opts[:as]
+          live "/", OverviewLive, :index, as: opts[:as]
+          live "/errors", ErrorsLive, :index, as: opts[:as]
+          live "/errors/:id", ErrorLive, :show, as: opts[:as]
+          live "/analytics", AnalyticsLive, :index, as: opts[:as]
+          live "/notifications", NotificationsLive, :index, as: opts[:as]
         end
       end
     end

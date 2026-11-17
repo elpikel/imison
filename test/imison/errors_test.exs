@@ -885,6 +885,46 @@ defmodule Imison.ErrorsTest do
     assert Sandbox.unboxed_run(Repo, fn -> length(hours_of_hourly_counts(error)) end) == 1
   end
 
+  test "listing with a limit gives at most that many errors of the status, most recently seen first" do
+    conf = config()
+    {:ok, _oldest} = Errors.record(conf, occurrence(kind: "KeyError", occurred_at: ~U[2026-11-11 09:00:00.000000Z]))
+    {:ok, middle} = Errors.record(conf, occurrence(kind: "ArgumentError", occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    {:ok, newest} = Errors.record(conf, occurrence(kind: "MatchError", occurred_at: ~U[2026-11-11 11:00:00.000000Z]))
+
+    {:ok, resolved} =
+      Errors.record(conf, occurrence(kind: "Jason.DecodeError", occurred_at: ~U[2026-11-11 12:00:00.000000Z]))
+
+    set_status(resolved, :resolved)
+
+    assert conf |> Errors.list(status: :unresolved, limit: 2) |> Enum.map(& &1.id) == [newest.id, middle.id]
+  end
+
+  test "counting errors first seen since a time counts them whatever their status and leaves out older ones" do
+    conf = config()
+    since = ~U[2026-11-10 12:00:00.000000Z]
+    {:ok, _new} = Errors.record(conf, occurrence(kind: "KeyError", occurred_at: ~U[2026-11-11 09:00:00.000000Z]))
+    {:ok, resolved} = Errors.record(conf, occurrence(kind: "MatchError", occurred_at: ~U[2026-11-10 12:00:00.000000Z]))
+    {:ok, ignored} = Errors.record(conf, occurrence(kind: "Postgrex.Error", occurred_at: ~U[2026-11-11 10:00:00.000000Z]))
+    {:ok, _old} = Errors.record(conf, occurrence(kind: "ArgumentError", occurred_at: ~U[2026-11-10 11:59:59.999999Z]))
+
+    {:ok, _seen_again} =
+      Errors.record(conf, occurrence(kind: "ArgumentError", occurred_at: ~U[2026-11-11 11:00:00.000000Z]))
+
+    set_status(resolved, :resolved)
+    set_status(ignored, :ignored)
+
+    assert Errors.count_first_seen_since(conf, since) == 3
+  end
+
+  test "with a configured prefix errors first seen since a time are counted in that schema" do
+    PrivatePrefix.migrate_up()
+    conf = config(prefix: PrivatePrefix.name())
+    {:ok, _error} = Errors.record(conf, occurrence(occurred_at: ~U[2026-11-11 09:00:00.000000Z]))
+
+    assert Errors.count_first_seen_since(conf, ~U[2026-11-11 00:00:00.000000Z]) == 1
+    assert Errors.count_first_seen_since(config(), ~U[2026-11-11 00:00:00.000000Z]) == 0
+  end
+
   defp occurred_at_of_occurrences(%Error{id: error_id}) do
     Occurrence
     |> from(as: :occurrence)

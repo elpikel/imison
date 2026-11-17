@@ -3,6 +3,7 @@ defmodule Imison.Pruner do
 
   use GenServer
 
+  alias Imison.Analytics
   alias Imison.Capture.FailureLog
   alias Imison.Config
   alias Imison.Errors
@@ -36,10 +37,16 @@ defmodule Imison.Pruner do
   end
 
   defp prune(conf) do
-    Errors.prune(conf, DateTime.utc_now())
+    now = DateTime.utc_now()
+    logging_failure("Imison failed to prune old occurrences", fn -> Errors.prune(conf, now) end)
+    logging_failure("Imison failed to prune old pageviews", fn -> Analytics.prune(conf, now) end)
+  end
+
+  defp logging_failure(failure_summary, pruning) do
+    pruning.()
   catch
     kind, reason ->
-      FailureLog.error("Imison failed to prune old occurrences", %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
+      FailureLog.error(failure_summary, %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
   end
 
   defp prune_after(delay), do: Process.send_after(self(), :prune, delay)

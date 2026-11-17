@@ -3,6 +3,7 @@ defmodule Imison.Errors do
 
   import Ecto.Query
 
+  alias Imison.BatchDelete
   alias Imison.Capture.FailureLog
   alias Imison.Config
   alias Imison.Errors.Broadcast
@@ -52,10 +53,9 @@ defmodule Imison.Errors do
   @heat_strip_hours 24
   @largest_id 9_223_372_036_854_775_807
   @change_broadcast_failure "Imison failed to broadcast a change to errors"
-  @prune_batch_size 10_000
   @nearest_first %{older: :desc, newer: :asc}
 
-  @spec list(Config.t(), status: atom(), search: String.t()) :: [Error.t()]
+  @spec list(Config.t(), status: atom(), search: String.t(), limit: pos_integer()) :: [Error.t()]
   def list(%Config{repo: repo, prefix: prefix}, opts) do
     status = Keyword.fetch!(opts, :status)
 
@@ -64,7 +64,7 @@ defmodule Imison.Errors do
     |> where([error: error], error.status == ^status)
     |> matching(Keyword.get(opts, :search, ""))
     |> order_by([error: error], desc: error.last_seen_at, desc: error.id)
-    |> limit(@listed_errors_limit)
+    |> limit(^Keyword.get(opts, :limit, @listed_errors_limit))
     |> repo.all(prefix: prefix)
   end
 
@@ -111,6 +111,15 @@ defmodule Imison.Errors do
       |> Map.new(&{&1.status, &1.count})
 
     Map.new(Error.statuses(), &{&1, Map.get(counts, &1, 0)})
+  end
+
+  @spec count_first_seen_since(Config.t(), DateTime.t()) :: non_neg_integer()
+  def count_first_seen_since(%Config{repo: repo, prefix: prefix}, %DateTime{} = since) do
+    Error
+    |> from(as: :error)
+    |> where([error: error], error.first_seen_at >= ^since)
+    |> select([error: error], count(error.id))
+    |> repo.one(prefix: prefix)
   end
 
   @spec hourly_counts(Config.t(), [integer()], DateTime.t()) :: %{integer() => [non_neg_integer()]}
@@ -171,8 +180,8 @@ defmodule Imison.Errors do
     cutoff = DateTime.shift(now, day: -retention_days)
 
     %{
-      occurrences: delete_in_batches(conf, %{schema: Occurrence, timestamp: :occurred_at, cutoff: cutoff}, 0),
-      hourly_counts: delete_in_batches(conf, %{schema: HourlyCount, timestamp: :hour, cutoff: cutoff}, 0)
+      occurrences: BatchDelete.delete_older_than(conf, %{schema: Occurrence, timestamp: :occurred_at, cutoff: cutoff}),
+      hourly_counts: BatchDelete.delete_older_than(conf, %{schema: HourlyCount, timestamp: :hour, cutoff: cutoff})
     }
   end
 
@@ -317,28 +326,6 @@ defmodule Imison.Errors do
   catch
     kind, reason ->
       FailureLog.error(@change_broadcast_failure, %{kind: kind, reason: reason, stacktrace: __STACKTRACE__})
-  end
-
-  defp delete_in_batches(%Config{repo: repo, prefix: prefix} = conf, old_rows, deleted_so_far) do
-    %{schema: schema, timestamp: timestamp, cutoff: cutoff} = old_rows
-
-    batch_ids =
-      schema
-      |> from(as: :old_row)
-      |> where([old_row: old_row], field(old_row, ^timestamp) < ^cutoff)
-      |> select([old_row: old_row], old_row.id)
-      |> limit(@prune_batch_size)
-      |> lock("FOR UPDATE SKIP LOCKED")
-
-    {deleted, _rows} =
-      schema
-      |> from(as: :old_row)
-      |> where([old_row: old_row], old_row.id in subquery(batch_ids))
-      |> repo.delete_all(prefix: prefix)
-
-    if deleted < @prune_batch_size,
-      do: deleted_so_far + deleted,
-      else: delete_in_batches(conf, old_rows, deleted_so_far + deleted)
   end
 
   defp counts_oldest_first(hourly_counts, first_hour) do

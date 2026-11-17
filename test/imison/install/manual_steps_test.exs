@@ -59,7 +59,7 @@ defmodule Imison.Install.ManualStepsTest do
                defmodule ShopFloor.Repo.Migrations.AddImison do
                  use Ecto.Migration
 
-                 def up, do: Imison.Migration.up(version: 1)
+                 def up, do: Imison.Migration.up(version: 2)
                  def down, do: Imison.Migration.down(version: 1)
                end
            """
@@ -77,7 +77,7 @@ defmodule Imison.Install.ManualStepsTest do
                scope "/" do
                  pipe_through :browser
 
-                 imison_dashboard "/errors"
+                 imison_dashboard "/imison"
                end
            """
   end
@@ -87,6 +87,20 @@ defmodule Imison.Install.ManualStepsTest do
 
     assert steps =~ ".formatter.exs"
     assert steps =~ "import_deps: [:imison"
+  end
+
+  test "shares the visitor's address, user agent and forwarded headers with the LiveView socket in the endpoint" do
+    steps = ManualSteps.text(:shop_floor)
+
+    assert steps =~ "lib/shop_floor_web/endpoint.ex"
+    assert steps =~ "connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]"
+  end
+
+  test "offers analytics as an option to turn on, with the proxy header for apps behind a proxy" do
+    steps = ManualSteps.text(:shop_floor)
+
+    assert steps =~ ~s|config :shop_floor, Imison, analytics: true|
+    assert steps =~ ~s|remote_ip_header: "x-forwarded-for"|
   end
 
   test "ends with the hint that adding Igniter makes the task do the changes itself" do

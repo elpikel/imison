@@ -141,7 +141,7 @@ defmodule Imison.Notifications.Channels.SlackTest do
              "*New errors*\n• *ArgumentError*: " <>
                String.duplicate("y", 299) <>
                "… (4 occurrences, `lib/orders.ex:12`) <https://app.example.com/errors/errors/7|Open>\n" <>
-               "and 1 more: <https://app.example.com/errors|Open in Imison>\n"
+               "and 1 more: <https://app.example.com/errors/errors|Open in Imison>\n"
   end
 
   test "a daily digest posts its three sections with capped lines and how many it left out" do
@@ -167,7 +167,7 @@ defmodule Imison.Notifications.Channels.SlackTest do
                  "*New errors*",
                  "• *ArgumentError*: invalid &lt;order&gt; id (4 occurrences, `lib/orders.ex:12`) <https://app.example.com/errors/errors/7|Open>",
                  "• *KeyError*: key :id not found (1 occurrence) <https://app.example.com/errors/errors/8|Open>",
-                 "and 3 more: <https://app.example.com/errors|Open in Imison>",
+                 "and 3 more: <https://app.example.com/errors/errors|Open in Imison>",
                  "",
                  "*Came back*",
                  "None.",

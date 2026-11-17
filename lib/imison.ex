@@ -110,12 +110,18 @@ defmodule Imison do
   defp capture_children(%Config{} = conf) do
     [
       {Imison.Notifications.Notifier, conf: conf},
-      {Imison.Capture.Worker, conf: conf},
-      {Imison.Capture.Handlers, conf: conf},
-      {Imison.Pruner, conf: conf},
-      {Imison.Notifications.Digest, conf: conf}
-    ]
+      {Imison.Capture.Worker, conf: conf}
+    ] ++
+      analytics_children(conf) ++
+      [
+        {Imison.Capture.Handlers, conf: conf},
+        {Imison.Pruner, conf: conf},
+        {Imison.Notifications.Digest, conf: conf}
+      ]
   end
+
+  defp analytics_children(%Config{analytics: false}), do: []
+  defp analytics_children(%Config{analytics: true} = conf), do: [{Imison.Analytics.Worker, conf: conf}]
 
   defp metadata_map(metadata) when is_map(metadata), do: metadata
   defp metadata_map(metadata) when is_list(metadata), do: Map.new(metadata)

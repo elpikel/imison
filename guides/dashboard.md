@@ -1,20 +1,28 @@
 # Using the dashboard
 
 The dashboard is mounted wherever you call `imison_dashboard` in your router
-(`/errors` after `mix imison.install`). It has three screens:
+(`/imison` after `mix imison.install`). Its screens, under that path:
 
-- the error list
-- an error's detail page
-- Notifications
+| Path | Screen |
+|---|---|
+| `<path>/` | The overview |
+| `<path>/errors` | The error list |
+| `<path>/errors/<id>` | An error's detail page |
+| `<path>/analytics` | Analytics |
+| `<path>/notifications` | Notifications |
 
-Each one asks for the login set by the `username` and `password` options.
+The top bar links to Overview, Errors, Analytics and Notifications. Each
+screen asks for the login set by the `username` and `password` options.
+
+The error list used to be at `<path>/` itself; bookmarks to it now open the
+overview.
 
 ## Signing in
 
 ![The login page](images/login.png)
 
 Every dashboard page except the login page (`<path>/login`) requires
-signing in. A correct username and password take you to the error list.
+signing in. A correct username and password take you to the overview.
 Signing in stores a value derived from the credentials, keyed with the
 endpoint's `secret_key_base`, in your app's session cookie. The credentials
 themselves are never stored, in the cookie or in the database.
@@ -38,6 +46,19 @@ force:
 - The count is shared by every node, because it is stored in the database.
 - If the database can't be reached, sign-in is refused with "Sign-in is
   unavailable. Try again shortly."
+
+## The overview
+
+The dashboard opens on a glimpse of your errors and your traffic, with a
+card for each. Each card links to its full page.
+
+- **Errors**: how many errors are unresolved, how many were first seen in
+  the last 24 hours (whatever their status now), and the 5 most recently
+  seen unresolved errors with their heat strips. The card updates live,
+  like the error list.
+- **Analytics**: the last 7 days' visitors, pageviews and bounce rate, a
+  chart of visitors per day and the top 3 pages, read when the page opens.
+  With `analytics: false`, the card says how to turn analytics on.
 
 ## The error list
 
@@ -92,7 +113,7 @@ location:
 - It is literal: `%` and `_` are plain characters.
 - The tab counts follow the search.
 
-The tab and the search are kept in the URL (`/errors?status=resolved&q=timeout`),
+The tab and the search are kept in the URL (`/imison/errors?status=resolved&q=timeout`),
 so you can bookmark or share a filtered list.
 
 ### Acting on several errors
@@ -157,6 +178,34 @@ restores its notifications from its next occurrence.
 
 Use muting for an error you know about and can't fix yet. Use Ignore for an
 error you never want to see again.
+
+## Analytics
+
+The Analytics tab (`<path>/analytics`) shows the pageviews Imison counts with
+`analytics: true` (see [Analytics](configuration.md#analytics) for turning it
+on and what's counted). Pick a range at the top: today, 7 days or 30 days.
+Ranges are in UTC and end now: "7 days" is today and the 6 days before it.
+The range is kept in the URL (`?range=today`, `7d` or `30d`).
+
+| Part | What it is |
+|---|---|
+| Visitors | Distinct visitors. A visitor is a hash of the day's salt, the IP and the user agent, so the same person is a new visitor each UTC day: someone who came on 3 days counts 3 times over 7 or 30 days. |
+| Pageviews | Page loads and LiveView navigations |
+| Bounce rate | The share of visits with a single pageview. A visit is a visitor's pageviews with no gap longer than 30 minutes. |
+| Visit duration | The average time from a visit's first to its last pageview. It's an estimate: the time spent on the last page counts as zero, so a bounce lasts 0 seconds. |
+| Chart | Visitors per hour for today, per day otherwise, in UTC. Hover a bar to see its hour or day and visitor count. |
+| Top pages | The 10 paths with the most visitors, without query strings |
+| Top sources | The 10 referring sites with the most visitors. Visitors without a referrer, or coming from a page of your own app, are "Direct / None". |
+
+A few details:
+
+- **Ranges cut visits**: only pageviews inside the range count, so a visit
+  that started before the range counts from its first pageview inside it.
+- **Midnight UTC** starts a new visitor, so a visit that crosses it counts
+  as two.
+- **No live updates**: the numbers are read when the page opens and when you
+  change the range.
+- **Off**: with `analytics: false`, the tab says how to turn analytics on.
 
 ## Notifications
 

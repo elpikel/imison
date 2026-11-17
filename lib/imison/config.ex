@@ -24,7 +24,10 @@ defmodule Imison.Config do
           enabled: boolean(),
           filter: [String.t()],
           ignore: [module()],
-          prefix: String.t()
+          prefix: String.t(),
+          analytics: boolean(),
+          analytics_retention_days: pos_integer(),
+          remote_ip_header: String.t() | nil
         }
 
   @required_options [:repo, :username, :password]
@@ -46,7 +49,10 @@ defmodule Imison.Config do
             enabled: true,
             filter: ~w(password token secret authorization cookie),
             ignore: [],
-            prefix: "public"
+            prefix: "public",
+            analytics: false,
+            analytics_retention_days: 90,
+            remote_ip_header: nil
 
   @doc """
   Builds the config from the host's options, raising `ArgumentError` when they're invalid.
@@ -82,7 +88,10 @@ defmodule Imison.Config do
              enabled: :boolean,
              filter: {:list, :string},
              ignore: {:list, {:module, [exception: 1]}},
-             prefix: :string
+             prefix: :string,
+             analytics: :boolean,
+             analytics_retention_days: :pos_integer,
+             remote_ip_header: {:or, [nil, :string]}
            ) do
       validate_required(opts)
     end

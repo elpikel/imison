@@ -4,7 +4,7 @@ The backlog. There is no issue tracker: pick the first open story whose dependen
 
 Stories come from [`PROJECT.md`](PROJECT.md); "done when" lines summarise what the design there promises and are refined into acceptance criteria by `/brainstorm`. The developer is whoever maintains the host app. Phase 1 is the smallest version worth installing, phase 2 makes it comfortable, phase 3 is extension work. Within a phase, stories are in build order.
 
-IDs: `DEV` setup, `INS` installation, `CAP` capture, `AUTH` auth, `ERR` errors, `NOT` notifications, `MN` multiple nodes.
+IDs: `DEV` setup, `INS` installation, `CAP` capture, `AUTH` auth, `ERR` errors, `NOT` notifications, `MN` multiple nodes, `ANA` analytics, `DASH` dashboard.
 
 ## Phase 0: setup
 
@@ -179,3 +179,23 @@ These are not in the design's story list; every phase 1 story needs them to be b
   As a developer, I want to add Slack, a webhook or Telegram as a channel, or write my own channel module, so that alerts reach me where I already look.
   Done when: a host module implementing `Imison.Notifications.Channel` and listed in `channels` receives messages; Slack and webhook channels ship with Imison.
   Note: Telegram was not built; a host can add it as its own channel module.
+
+- [x] **ANA-01 Count page loads as pageviews** · needs: CAP-04
+  As a developer, I want Imison to count my app's page loads and visitors without a script or cookies, so that I see basic traffic numbers without adding another service.
+  Done when: with `analytics: true` (default off), a GET answered 200 with HTML is stored as a pageview with its path, source and a visitor hashed from a daily salt, the IP and the user agent; no IP, user agent or cookie is stored; bots and Imison's own pages are skipped; `remote_ip_header` names the header holding the client IP behind a proxy; capture never blocks the host. Counted server-side (ADR 0006).
+
+- [x] **ANA-02 Count LiveView navigations** · needs: ANA-01
+  As a developer, I want LiveView navigations counted as pageviews, so that a LiveView app's traffic isn't undercounted.
+  Done when: a `navigate`, or a `patch` to a new path, stores one pageview with the same visitor as the page load, a LiveView's first page counts once, and `mix imison.install` adds `:peer_data`, `:user_agent` and `:x_headers` to the `/live` socket's `connect_info`.
+
+- [x] **ANA-03 Analytics tab** · needs: ANA-01, AUTH-02
+  As a developer, I want an Analytics tab with visitors, pageviews, bounce rate, visit duration, a chart and top pages and sources, so that I can see how my app is used.
+  Done when: `<path>/analytics` shows those numbers for today, 7 or 30 days (UTC), with visits split by 30 minutes without a pageview, and explains how to turn analytics on when it's off.
+
+- [x] **ANA-04 Prune old pageviews** · needs: ANA-01, CAP-05
+  As a developer, I want old pageviews and salts deleted, so that the tables stay small and visitors can't be linked across days.
+  Done when: the pruner deletes pageviews older than `analytics_retention_days` (default 90) and salts older than yesterday.
+
+- [x] **DASH-01 Overview** · needs: ANA-03, ERR-04
+  As a developer, I want the dashboard to open on an overview with a glimpse of errors and analytics, so that I see what needs attention and can go to the details.
+  Done when: `<path>/` shows the unresolved and new error counts, the 5 latest unresolved errors (live) and the 7-day analytics numbers, each linking to its full page; the error list moves to `<path>/errors` and the digest links there.

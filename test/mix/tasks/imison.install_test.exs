@@ -117,7 +117,7 @@ defmodule Mix.Tasks.Imison.InstallTest do
     defmodule MyApp.Repo.Migrations.AddImison do
       use Ecto.Migration
 
-      def up, do: Imison.Migration.up(version: 1)
+      def up, do: Imison.Migration.up(version: 2)
 
       def down, do: Imison.Migration.down(version: 1)
     end
@@ -135,7 +135,77 @@ defmodule Mix.Tasks.Imison.InstallTest do
     assert router =~ "import Imison.Web.Router"
 
     assert router =~
-             ~r/scope "\/" do\s+pipe_through[ (]:browser\)?\s+imison_dashboard[ (]"\/errors"\)?\s+end/
+             ~r/scope "\/" do\s+pipe_through[ (]:browser\)?\s+imison_dashboard[ (]"\/imison"\)?\s+end/
+  end
+
+  test "shares the visitor's address, user agent and forwarded headers with the LiveView socket" do
+    igniter =
+      [app_name: :my_app]
+      |> phx_test_project()
+      |> Igniter.compose_task("imison.install", [])
+
+    endpoint = file_content(igniter, "lib/my_app_web/endpoint.ex")
+
+    assert endpoint =~
+             "websocket: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]"
+
+    assert endpoint =~
+             "longpoll: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]"
+  end
+
+  test "adds only the socket details the endpoint does not share yet" do
+    endpoint =
+      [app_name: :my_app]
+      |> phx_test_project()
+      |> replace_in_file(
+        "lib/my_app_web/endpoint.ex",
+        "websocket: [connect_info: [session: @session_options]]",
+        "websocket: [connect_info: [:user_agent, session: @session_options]]"
+      )
+      |> apply_igniter!()
+      |> Igniter.compose_task("imison.install", [])
+      |> file_content("lib/my_app_web/endpoint.ex")
+
+    assert endpoint =~
+             "websocket: [connect_info: [:peer_data, :x_headers, :user_agent, session: @session_options]]"
+  end
+
+  test "warns with the change to make by hand when the endpoint has no LiveView socket" do
+    [app_name: :my_app]
+    |> phx_test_project()
+    |> replace_in_file("lib/my_app_web/endpoint.ex", ~s|socket("/live"|, ~s|socket("/other"|)
+    |> apply_igniter!()
+    |> Igniter.compose_task("imison.install", [])
+    |> assert_has_warning(&(&1 =~ "connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]"))
+  end
+
+  test "warns with the change to make by hand when the LiveView socket lists no connect_info" do
+    igniter =
+      [app_name: :my_app]
+      |> phx_test_project()
+      |> replace_in_file(
+        "lib/my_app_web/endpoint.ex",
+        """
+        socket("/live", Phoenix.LiveView.Socket,
+            websocket: [connect_info: [session: @session_options]],
+            longpoll: [connect_info: [session: @session_options]]
+          )
+        """,
+        ~s|socket("/live", Phoenix.LiveView.Socket)
+|
+      )
+      |> apply_igniter!()
+      |> Igniter.compose_task("imison.install", [])
+
+    assert_has_warning(igniter, &(&1 =~ "connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]"))
+    assert_unchanged(igniter, "lib/my_app_web/endpoint.ex")
+  end
+
+  test "tells how to turn analytics on once installed" do
+    [app_name: :my_app]
+    |> phx_test_project()
+    |> Igniter.compose_task("imison.install", [])
+    |> assert_has_notice(&(&1 =~ "analytics: true" and &1 =~ "remote_ip_header"))
   end
 
   test "changes nothing when run a second time" do
@@ -151,6 +221,12 @@ defmodule Mix.Tasks.Imison.InstallTest do
     igniter.rewrite
     |> Rewrite.source!(path)
     |> Rewrite.Source.get(:content)
+  end
+
+  defp replace_in_file(igniter, path, from, to) do
+    Igniter.update_file(igniter, path, fn source ->
+      Rewrite.Source.update(source, :content, &String.replace(&1, from, to))
+    end)
   end
 
   defp position(content, text) do

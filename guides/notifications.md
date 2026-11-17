@@ -100,11 +100,13 @@ Email goes through your app's own Swoosh mailer. Set `mailer` and `from`, and
 config :my_app, Imison,
   mailer: MyApp.Mailer,
   from: "errors@example.com",
-  dashboard_url: "https://app.example.com/errors"
+  dashboard_url: "https://app.example.com/imison"
 ```
 
 `dashboard_url` is the absolute URL where `imison_dashboard` is mounted.
-Without it, messages are sent without links.
+Messages link to the error's page under it, and the daily summary to the
+error list (`<dashboard_url>/errors`). Without it, messages are sent without
+links.
 
 On the panel, enter the recipients separated by commas or new lines, switch it
 on and save. Each address must look like `local@domain`; the domain isn't
@@ -124,7 +126,7 @@ Location: Shop.Coupons.find/1 (lib/shop/coupons.ex:4)
 Occurrences: 1
 First seen: 11 Nov 2026, 17:59:29 UTC
 
-View it on the dashboard: https://app.example.com/errors/errors/1
+View it on the dashboard: https://app.example.com/imison/errors/1
 ```
 
 The other subjects:
@@ -144,21 +146,21 @@ Daily summary for 12 Nov 2026 (UTC)
 New errors
 - ArgumentError: invalid order id: "abc"
   12 occurrences, Shop.Orders.fetch/1 (lib/shop/orders.ex:6)
-  https://app.example.com/errors/errors/222
+  https://app.example.com/imison/errors/222
 
 Came back
 - KeyError: key :price not found in:
     %{quantity: 2, sku: "SKU-7"}
   5 occurrences, Shop.Orders.line_total/1 (lib/shop/orders.ex:11)
-  https://app.example.com/errors/errors/322
+  https://app.example.com/imison/errors/322
 
 Most frequent
 - Postgrex.Error: ERROR 42P01 (undefined_table) relation "coupons" does not exist
     query: SELECT * FROM coupons WHERE code = $1
   123 occurrences, Shop.Coupons.find/1 (lib/shop/coupons.ex:4)
-  https://app.example.com/errors/errors/1
+  https://app.example.com/imison/errors/1
 ...
-and 4 more: https://app.example.com/errors
+and 4 more: https://app.example.com/imison/errors
 ```
 
 ### Slack
@@ -185,7 +187,7 @@ A message reads like this in Slack's `mrkdwn` markup:
 *Postgrex.Error*: ERROR 42P01 (undefined_table) relation "coupons" does not exist
 `Shop.Coupons.find/1 (lib/shop/coupons.ex:4)`
 1 occurrence, first seen 11 Nov 2026, 17:59:29 UTC
-<https://app.example.com/errors/errors/1|Open in Imison>
+<https://app.example.com/imison/errors/1|Open in Imison>
 ```
 
 - **Long text**: the kind, message and location are cut to their first line,
@@ -216,7 +218,7 @@ The body (`content-type: application/json`):
   "first_seen_at": "2026-11-12T09:30:00.000000Z",
   "last_seen_at": "2026-11-12T09:30:00.000000Z",
   "regressed_at": null,
-  "url": "https://app.example.com/errors/errors/42",
+  "url": "https://app.example.com/imison/errors/42",
   "summary": null
 }
 ```
@@ -224,9 +226,10 @@ The body (`content-type: application/json`):
 - **`trigger`**: `new`, `regression`, `still_happening`, `digest` or `test`.
 - **Times**: ISO 8601, in UTC.
 - **The daily summary** (`digest`): the error fields are `null`, and
-  `summary` holds `date`, `url` and the sections `new`, `came_back` and
-  `most_frequent`. Each section is `{"lines": [...], "total": n}`, and each
-  line has `error_id`, `kind`, `message`, `location`, `count` and `url`.
+  `summary` holds `date`, `url` (the error list, `<dashboard_url>/errors`)
+  and the sections `new`, `came_back` and `most_frequent`. Each section is
+  `{"lines": [...], "total": n}`, and each line has `error_id`, `kind`,
+  `message`, `location`, `count` and `url`.
 
 #### Verifying the signature
 

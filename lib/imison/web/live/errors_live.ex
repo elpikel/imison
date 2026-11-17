@@ -1,6 +1,6 @@
 defmodule Imison.Web.ErrorsLive do
   @moduledoc """
-  The error list, the dashboard's home page (`docs/design/errors.html`): one
+  The error list at `<path>/errors` (`docs/design/errors.html`): one
   tab per status with its count, a search over kind, message and location,
   and the most recently seen errors first. The status and the search live in
   the URL (`?status=resolved&q=timeout`).
@@ -22,15 +22,13 @@ defmodule Imison.Web.ErrorsLive do
   use Phoenix.LiveView
 
   alias Imison.Errors
-  alias Imison.Errors.Broadcast
   alias Imison.Errors.Error
+  alias Imison.Web.Components
   alias Imison.Web.Format
   alias Imison.Web.Layouts
+  alias Imison.Web.LiveUpdates
   alias Imison.Web.Paths
 
-  @live_reload_interval_ms 1_000
-  @refresh_interval_ms 5_000
-  @live_reload_events [:recorded, :changed]
   @bulk_actions %{
     unresolved: [:resolved, :ignored],
     resolved: [:unresolved, :ignored],
@@ -44,15 +42,8 @@ defmodule Imison.Web.ErrorsLive do
 
     {:ok,
      socket
-     |> assign(
-       conf: conf,
-       dashboard_path: dashboard_path,
-       page_title: "Errors",
-       subscribed: connected?(socket) and Broadcast.subscribe(conf) == :ok,
-       live_reload: :idle,
-       selected: MapSet.new()
-     )
-     |> start_refreshing()}
+     |> assign(conf: conf, dashboard_path: dashboard_path, page_title: "Errors", selected: MapSet.new())
+     |> LiveUpdates.attach(conf, &load_list/1)}
   end
 
   @impl Phoenix.LiveView
@@ -66,24 +57,6 @@ defmodule Imison.Web.ErrorsLive do
      )
      |> load_list()}
   end
-
-  @impl Phoenix.LiveView
-  def handle_info({:imison, event, _error_ids}, socket) when event in @live_reload_events,
-    do: {:noreply, request_reload(socket)}
-
-  def handle_info(:refresh, %{assigns: %{subscribed: subscribed}} = socket) do
-    schedule_refresh()
-
-    case update_source(subscribed) do
-      :polling -> {:noreply, socket |> assign(live: :polling) |> request_reload()}
-      :broadcasts -> {:noreply, assign(socket, live: :broadcasts)}
-    end
-  end
-
-  def handle_info(:live_reload_hold_over, %{assigns: %{live_reload: :pending}} = socket),
-    do: {:noreply, reload_and_hold(socket)}
-
-  def handle_info(:live_reload_hold_over, socket), do: {:noreply, assign(socket, live_reload: :idle)}
 
   @impl Phoenix.LiveView
   def handle_event("search", params, %{assigns: assigns} = socket) do
@@ -190,55 +163,38 @@ defmodule Imison.Web.ErrorsLive do
         {action_label(status)}
       </button>
     </div>
-    <div class="errors__head">
-      <input
-        class="checkbox"
-        type="checkbox"
-        aria-label="Select all"
-        checked={all_selected?(@errors, @selected)}
-        phx-click="toggle_all"
-      />
-      <span>Error</span><span>Last 24 hours</span><span style="text-align:right">Events</span><span style="text-align:right">Last seen</span>
-    </div>
-    <ul class="errors">
-      <li :for={error <- @errors} id={"error-#{error.id}"} class="error-row">
+    <Components.errors_head>
+      <:selection>
         <input
-          class="checkbox error-row__check"
+          class="checkbox"
           type="checkbox"
-          aria-label={"Select #{error.kind}"}
-          checked={MapSet.member?(@selected, error.id)}
-          phx-click="toggle_selection"
-          phx-value-id={error.id}
+          aria-label="Select all"
+          checked={all_selected?(@errors, @selected)}
+          phx-click="toggle_all"
         />
-        <div class="error-row__main">
-          <div class="error-row__title">
-            <.link class="error-row__kind truncate" navigate={Paths.error(@dashboard_path, error.id)}>{error.kind}</.link>
-            <span :if={back_again?(error)} class="flag flag--regressed">Back again</span>
-            <span :if={error.muted} class="flag flag--off">Muted</span>
-          </div>
-          <p class="error-row__message truncate">{error.message}</p>
-          <div :if={error.location} class="error-row__meta">
-            <span class="error-row__loc">{error.location}</span>
-          </div>
-        </div>
-        <.heat_strip counts={Map.fetch!(@hourly_counts, error.id)} />
-        <span class="error-row__events">{Format.with_thousands_separators(error.occurrence_count)}</span>
-        <span class="error-row__seen">{time_ago(DateTime.diff(@now, error.last_seen_at))}</span>
-      </li>
+      </:selection>
+    </Components.errors_head>
+    <ul class="errors">
+      <Components.error_row
+        :for={error <- @errors}
+        error={error}
+        hourly_counts={Map.fetch!(@hourly_counts, error.id)}
+        now={@now}
+        dashboard_path={@dashboard_path}
+      >
+        <:selection>
+          <input
+            class="checkbox error-row__check"
+            type="checkbox"
+            aria-label={"Select #{error.kind}"}
+            checked={MapSet.member?(@selected, error.id)}
+            phx-click="toggle_selection"
+            phx-value-id={error.id}
+          />
+        </:selection>
+      </Components.error_row>
     </ul>
     <p class="errors__foot">{list_summary(length(@errors), @total)}</p>
-    """
-  end
-
-  attr :counts, :list, required: true
-
-  defp heat_strip(%{counts: counts} = assigns) do
-    assigns = assign(assigns, total: Enum.sum(counts), busiest: Enum.max(counts))
-
-    ~H"""
-    <div class="heat error-row__heat" role="img" aria-label={events_in_last_24_hours(@total)}>
-      <i :for={count <- @counts} data-l={heat_level(count, @busiest)}></i>
-    </div>
     """
   end
 
@@ -290,34 +246,6 @@ defmodule Imison.Web.ErrorsLive do
     )
   end
 
-  defp start_refreshing(%{assigns: %{subscribed: subscribed}} = socket) do
-    if connected?(socket) do
-      schedule_refresh()
-      assign(socket, live: update_source(subscribed))
-    else
-      assign(socket, live: nil)
-    end
-  end
-
-  defp schedule_refresh, do: Process.send_after(self(), :refresh, @refresh_interval_ms)
-
-  defp update_source(true = _subscribed) do
-    if Node.list() == [], do: :polling, else: :broadcasts
-  end
-
-  defp update_source(false = _subscribed), do: :polling
-
-  defp request_reload(%{assigns: %{live_reload: :idle}} = socket), do: reload_and_hold(socket)
-  defp request_reload(socket), do: assign(socket, live_reload: :pending)
-
-  defp reload_and_hold(socket) do
-    Process.send_after(self(), :live_reload_hold_over, @live_reload_interval_ms)
-
-    socket
-    |> load_list()
-    |> assign(live_reload: :holding)
-  end
-
   defp toggle(selected, error_id) do
     if MapSet.member?(selected, error_id),
       do: MapSet.delete(selected, error_id),
@@ -345,9 +273,11 @@ defmodule Imison.Web.ErrorsLive do
       |> put_status(status)
       |> URI.encode_query()
 
+    list_path = Paths.errors(dashboard_path)
+
     case query do
-      "" -> dashboard_path
-      query -> dashboard_path <> "?" <> query
+      "" -> list_path
+      query -> list_path <> "?" <> query
     end
   end
 
@@ -358,20 +288,6 @@ defmodule Imison.Web.ErrorsLive do
   defp put_search(query, search) do
     if String.trim(search) == "", do: query, else: [{:q, search} | query]
   end
-
-  defp back_again?(%Error{regressed_at: nil}), do: false
-  defp back_again?(%Error{status: status}), do: status == :unresolved
-
-  defp heat_level(0, _busiest), do: nil
-  defp heat_level(count, busiest), do: div(count * 4 + busiest - 1, busiest)
-
-  defp events_in_last_24_hours(1), do: "1 event in the last 24 hours"
-  defp events_in_last_24_hours(total), do: "#{Format.with_thousands_separators(total)} events in the last 24 hours"
-
-  defp time_ago(seconds) when seconds < 60, do: "just now"
-  defp time_ago(seconds) when seconds < 3600, do: "#{div(seconds, 60)} min ago"
-  defp time_ago(seconds) when seconds < 86_400, do: "#{div(seconds, 3600)} h ago"
-  defp time_ago(seconds), do: "#{div(seconds, 86_400)} d ago"
 
   defp list_summary(shown, total) when shown < total, do: "The #{shown} most recently seen of #{total} errors"
   defp list_summary(1, _total), do: "1 error"

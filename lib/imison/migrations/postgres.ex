@@ -6,8 +6,11 @@ defmodule Imison.Migrations.Postgres do
   use Ecto.Migration
 
   @initial_version 1
-  @current_version 1
+  @current_version 2
   @default_prefix "public"
+
+  @spec initial_version() :: pos_integer()
+  def initial_version, do: @initial_version
 
   @spec current_version() :: pos_integer()
   def current_version, do: @current_version

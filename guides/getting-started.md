@@ -51,9 +51,10 @@ run it again safely. It makes these changes:
 | `config/dev.exs` | The login `admin` with a random password, generated at install time |
 | `config/test.exs` | `enabled: false`, so your tests record nothing |
 | `lib/my_app/application.ex` | `{Imison, Application.fetch_env!(:my_app, Imison)}` after the repo and PubSub |
-| `priv/repo/migrations/*_add_imison.exs` | A migration calling `Imison.Migration.up(version: 1)` |
-| `lib/my_app_web/router.ex` | `import Imison.Web.Router` and `imison_dashboard "/errors"` |
+| `priv/repo/migrations/*_add_imison.exs` | A migration calling `Imison.Migration.up(version: 2)` |
+| `lib/my_app_web/router.ex` | `import Imison.Web.Router` and `imison_dashboard "/imison"` |
 | `.formatter.exs` | `:imison` in `import_deps` |
+| `lib/my_app_web/endpoint.ex` | `:peer_data`, `:user_agent` and `:x_headers` in the `/live` socket's `connect_info`, for [analytics](configuration.md#analytics) |
 
 Without Igniter, `mix imison.install` changes no files. It prints the same
 steps with your app's names filled in, for you to apply by hand. They are
@@ -69,9 +70,10 @@ This creates Imison's tables, all prefixed `imison_`, in your database.
 
 ## 4. Open the dashboard
 
-Start the app with `mix phx.server` and open <http://localhost:4000/errors>.
+Start the app with `mix phx.server` and open <http://localhost:4000/imison>.
 Sign in as `admin` with the password the installer wrote to
-`config/dev.exs`.
+`config/dev.exs`. You land on the overview; the error list is at
+<http://localhost:4000/imison/errors>.
 
 ![The login page](images/login.png)
 
@@ -85,7 +87,8 @@ def show(_conn, %{"id" => id}) do
 end
 ```
 
-Request the page, and the error appears in the list within a second. You
+Request the page, and the error appears on the overview and in the list
+within a second. You
 don't need to reload the page. Request it again and the error's count goes up
 instead of a second row appearing: occurrences with the same exception and
 the same place in your code are grouped into one error.
@@ -104,10 +107,10 @@ accident.
 
 Next steps:
 
-- [Using the dashboard](dashboard.md): triage errors, the list and the detail page
+- [Using the dashboard](dashboard.md): the overview, triaging errors on the list and the detail page, analytics
 - [Capturing errors](capturing-errors.md): what is captured, `Imison.report/3` and filtering
 - [Notifications](notifications.md): email, Slack and webhooks
-- [Configuration](configuration.md): every option
+- [Configuration](configuration.md): every option, and turning analytics on
 
 ## Installing by hand
 
@@ -158,7 +161,7 @@ stand for your app's name and module prefix.
    defmodule MyApp.Repo.Migrations.AddImison do
      use Ecto.Migration
 
-     def up, do: Imison.Migration.up(version: 1)
+     def up, do: Imison.Migration.up(version: 2)
      def down, do: Imison.Migration.down(version: 1)
    end
    ```
@@ -172,7 +175,7 @@ stand for your app's name and module prefix.
    scope "/" do
      pipe_through :browser
 
-     imison_dashboard "/errors"
+     imison_dashboard "/imison"
    end
    ```
 
@@ -182,12 +185,26 @@ stand for your app's name and module prefix.
    import_deps: [:imison, ...]
    ```
 
+9. `lib/my_app_web/endpoint.ex`: add `:peer_data`, `:user_agent` and
+   `:x_headers` to the LiveView socket's `connect_info`, so analytics can
+   read the visitor's address and user agent. It's harmless while analytics
+   is off:
+
+   ```elixir
+   socket "/live", Phoenix.LiveView.Socket,
+     websocket: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]],
+     longpoll: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]
+   ```
+
+10. Optional, to count pageviews: turn [analytics](configuration.md#analytics)
+    on in `config/config.exs`. Behind a proxy, also set `remote_ip_header`:
+
+    ```elixir
+    config :my_app, Imison, analytics: true, remote_ip_header: "x-forwarded-for"
+    ```
+
 Then run `mix ecto.migrate`.
 
 The `:browser` pipeline must call `fetch_session` and `protect_from_forgery`,
 as the one `mix phx.new` generates does. Your endpoint also needs the LiveView
-socket, with the session passed in `connect_info`:
-
-```elixir
-socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
-```
+socket at `/live`, with the session passed in `connect_info`, as in step 9.

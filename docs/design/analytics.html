@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analytics – Imison</title>
+<link rel="stylesheet" href="../../priv/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="overview.html"><svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" style="fill:var(--mark)"/><path d="M5 14h4l2-6 3 9 2-5h3" fill="none" style="stroke:var(--spark)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Imison</a>
+  <nav class="nav" aria-label="Main">
+    <a class="nav__link" href="overview.html">Overview</a>
+    <a class="nav__link" href="errors.html">Errors<span class="nav__count">8</span></a>
+    <a class="nav__link" href="analytics.html" aria-current="page">Analytics</a>
+    <a class="nav__link" href="notifications.html">Notifications</a>
+  </nav>
+  <div class="topbar__end">
+    <a class="btn btn--quiet btn--sm" href="login.html">Sign out</a>
+  </div>
+</header>
+<main class="page">
+  <div class="page__head">
+    <div>
+      <h1 class="page__title">Analytics</h1>
+      <p class="page__lede">Pageviews counted by your app’s server, without cookies. Times are in UTC.</p>
+    </div>
+    <!-- Patch links: the range lives in ?range=today|7d|30d -->
+    <nav class="range" aria-label="Range">
+      <a class="range__item" href="analytics.html?range=today">Today</a>
+      <a class="range__item" href="analytics.html?range=7d" aria-current="true">7 days</a>
+      <a class="range__item" href="analytics.html?range=30d">30 days</a>
+    </nav>
+  </div>
+
+  <section class="panel">
+    <dl class="stats">
+      <div class="stat"><dt class="stat__label">Visitors</dt><dd class="stat__value">1,284</dd></div>
+      <div class="stat"><dt class="stat__label">Pageviews</dt><dd class="stat__value">4,512</dd></div>
+      <div class="stat"><dt class="stat__label">Bounce rate</dt><dd class="stat__value">42%</dd></div>
+      <div class="stat"><dt class="stat__label">Visit duration</dt><dd class="stat__value">3m 20s</dd></div>
+    </dl>
+
+    <!-- Bar chart, server-rendered. One bar per UTC day (per UTC hour for Today: "Visitors per hour (UTC)",
+         tooltips like "13:00–14:00 UTC · 2 visitors"). The plot keeps a 6:1 ratio and scales with the panel;
+         hovering anywhere in a slot's column shows its .chart__tip (CSS only), shifted by --position so it stays
+         inside the plot, and the visually hidden table gives screen readers the same numbers. A bar is at least
+         2px tall so a small count next to a big peak stays visible; a bucket with 0 visitors gets .chart__bar--empty
+         and shows no bar. -->
+    <figure class="chart" style="--buckets:7">
+      <figcaption class="chart__caption"><span class="section-title">Visitors per day (UTC)</span><span class="faint">Peak 241</span></figcaption>
+      <div class="chart__plot" role="img" aria-label="Visitors per day (UTC), peak 241">
+        <div class="chart__slot" style="--position:0.0%"><span class="chart__bar" style="--height:54.8%"></span><span class="chart__tip">10 Nov · 139 visitors</span></div>
+        <div class="chart__slot" style="--position:16.7%"><span class="chart__bar" style="--height:71.7%"></span><span class="chart__tip">11 Nov · 182 visitors</span></div>
+        <div class="chart__slot" style="--position:33.3%"><span class="chart__bar" style="--height:86.3%"></span><span class="chart__tip">12 Nov · 219 visitors</span></div>
+        <div class="chart__slot" style="--position:50.0%"><span class="chart__bar" style="--height:95.0%"></span><span class="chart__tip">13 Nov · 241 visitors</span></div>
+        <div class="chart__slot" style="--position:66.7%"><span class="chart__bar" style="--height:78.4%"></span><span class="chart__tip">14 Nov · 199 visitors</span></div>
+        <div class="chart__slot" style="--position:83.3%"><span class="chart__bar" style="--height:60.7%"></span><span class="chart__tip">15 Nov · 154 visitors</span></div>
+        <div class="chart__slot" style="--position:100.0%"><span class="chart__bar" style="--height:59.1%"></span><span class="chart__tip">16 Nov · 150 visitors</span></div>
+      </div>
+      <div class="chart__labels" aria-hidden="true">
+        <span>10 Nov</span><span>11 Nov</span><span>12 Nov</span><span>13 Nov</span><span>14 Nov</span><span>15 Nov</span><span>16 Nov</span>
+      </div>
+      <table class="visually-hidden">
+        <caption>Visitors per day (UTC)</caption>
+        <tr><th scope="row">10 Nov</th><td>139</td></tr>
+        <tr><th scope="row">11 Nov</th><td>182</td></tr>
+        <tr><th scope="row">12 Nov</th><td>219</td></tr>
+        <tr><th scope="row">13 Nov</th><td>241</td></tr>
+        <tr><th scope="row">14 Nov</th><td>199</td></tr>
+        <tr><th scope="row">15 Nov</th><td>154</td></tr>
+        <tr><th scope="row">16 Nov</th><td>150</td></tr>
+      </table>
+    </figure>
+  </section>
+
+  <div class="toplists">
+    <!-- Each row's soft bar is its share of the list's top visitor count -->
+    <section class="panel">
+      <div class="panel__head"><h2 class="section-title">Top pages</h2></div>
+      <table class="toplist">
+        <thead><tr><th scope="col">Page</th><th scope="col">Visitors</th><th scope="col">Pageviews</th></tr></thead>
+        <tbody>
+          <tr><td><span class="toplist__bar" style="--share:100%"></span><span class="toplist__name">/</span></td><td>812</td><td>1,104</td></tr>
+          <tr><td><span class="toplist__bar" style="--share:47%"></span><span class="toplist__name">/pricing</span></td><td>384</td><td>502</td></tr>
+          <tr><td><span class="toplist__bar" style="--share:30%"></span><span class="toplist__name">/docs/getting-started</span></td><td>241</td><td>690</td></tr>
+          <tr><td><span class="toplist__bar" style="--share:15%"></span><span class="toplist__name">/blog/server-side-analytics</span></td><td>122</td><td>131</td></tr>
+          <tr><td><span class="toplist__bar" style="--share:5%"></span><span class="toplist__name">/signup</span></td><td>41</td><td>58</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel__head"><h2 class="section-title">Top sources</h2></div>
+      <table class="toplist">
+        <thead><tr><th scope="col">Source</th><th scope="col">Visitors</th><th scope="col">Pageviews</th></tr></thead>
+        <tbody>
+          <tr><td><span class="toplist__bar" style="--share:100%"></span><span class="toplist__name">Direct / None</span></td><td>702</td><td>2,310</td></tr>
+          <tr><td><span class="toplist__bar" style="--share:46%"></span><span class="toplist__name">google.com</span></td><td>321</td><td>1,207</td></tr>
+          <tr><td><span class="toplist__bar" style="--share:21%"></span><span class="toplist__name">news.ycombinator.com</span></td><td>148</td><td>611</td></tr>
+          <tr><td><span class="toplist__bar" style="--share:9%"></span><span class="toplist__name">github.com</span></td><td>63</td><td>214</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <!-- Empty state, shown instead of the chart and the top lists when the range has no pageviews
+       (the tiles above stay, showing zeros):
+  <section class="panel">
+    <div class="empty">
+      <h2 class="empty__title">No pageviews in this range</h2>
+      <p class="empty__text">Pages appear here as people visit your app. Try a longer range.</p>
+    </div>
+  </section> -->
+
+  <!-- Analytics off (analytics: false), shown instead of everything below the head, without the range:
+  <section class="panel">
+    <div class="empty">
+      <h2 class="empty__title">Analytics is off</h2>
+      <p class="empty__text">Turn it on in Imison’s options and restart your app. Imison then counts pageviews on your app’s HTML pages and LiveView navigations.</p>
+      <pre class="codeblock analytics-off__code">config :my_app, Imison,
+  analytics: true</pre>
+    </div>
+  </section> -->
+</main>
+</body>
+</html>

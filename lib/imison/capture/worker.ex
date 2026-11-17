@@ -3,6 +3,7 @@ defmodule Imison.Capture.Worker do
 
   use GenServer
 
+  alias Imison.BoundedCast
   alias Imison.Capture.FailureLog
   alias Imison.Capture.Filter
   alias Imison.Config
@@ -15,18 +16,12 @@ defmodule Imison.Capture.Worker do
   @default_queue_limit 1_000
   @broadcast_failure "Imison failed to broadcast a recorded error"
 
-  @type registration :: %{dropped: :counters.counters_ref(), queue_limit: pos_integer()}
-
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) when is_list(opts) do
     %Config{} = conf = Keyword.fetch!(opts, :conf)
+    queue_limit = Keyword.get(opts, :queue_limit, @default_queue_limit)
 
-    registration = %{
-      dropped: :counters.new(1, [:write_concurrency]),
-      queue_limit: Keyword.get(opts, :queue_limit, @default_queue_limit)
-    }
-
-    GenServer.start_link(__MODULE__, conf, name: Imison.Registry.via(conf.name, __MODULE__, registration))
+    GenServer.start_link(__MODULE__, conf, name: BoundedCast.via(conf.name, __MODULE__, queue_limit))
   end
 
   @impl GenServer

@@ -64,6 +64,9 @@ database can't be recorded. It only reaches your logs.
 - **Runs on several nodes**: counts, notifications sent "once" and the
   sign-in throttle are coordinated through the database. Clustering is
   optional.
+- **Counts visitors, if you want it**: opt-in [analytics](#analytics)
+  counted by your server, without a script or cookies, next to your errors
+  on the dashboard's overview.
 
 ![An error's detail page](guides/images/error-detail.png)
 
@@ -83,18 +86,21 @@ mix imison.install
 mix ecto.migrate
 ```
 
-`mix imison.install` does four things:
+`mix imison.install` does five things:
 
 - adds the config and the supervision-tree entry
 - generates the migration
-- mounts the dashboard at `/errors`
+- mounts the dashboard at `/imison`
 - writes a dev login to `config/dev.exs`
+- adds `:peer_data`, `:user_agent` and `:x_headers` to your LiveView socket's
+  `connect_info`, for [analytics](#analytics)
 
 It shows each change and asks before writing it. Without Igniter, it prints
 the steps for you to apply by hand.
 
-Start your app, open <http://localhost:4000/errors> and sign in. Every
-unhandled exception from now on shows up there.
+Start your app, open <http://localhost:4000/imison> and sign in. The
+dashboard opens on an overview; every unhandled exception from now on shows
+up there and in the error list, at `/imison/errors`.
 
 In production, set the dashboard login in the environment:
 
@@ -122,7 +128,7 @@ Set your mailer and sender:
 config :my_app, Imison,
   mailer: MyApp.Mailer,
   from: "errors@example.com",
-  dashboard_url: "https://app.example.com/errors"
+  dashboard_url: "https://app.example.com/imison"
 ```
 
 Then, on the dashboard's Notifications screen, enter recipients on the Email
@@ -138,16 +144,87 @@ config :my_app, Imison,
   ]
 ```
 
+## Analytics
+
+Imison can also count your app's pageviews and visitors, Plausible-style but
+from inside your server: no script, no cookie, nothing for ad blockers to
+hide ([ADR 0006](https://github.com/elpikel/imison/blob/main/docs/adr/0006-server-side-analytics.md)). It's off by
+default. To turn it on:
+
+```elixir
+config :my_app, Imison,
+  analytics: true,
+  # behind a proxy or load balancer:
+  remote_ip_header: "x-forwarded-for"
+```
+
+- **Socket**: LiveView navigations need your `/live` socket to share
+  `connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]`.
+  `mix imison.install` adds it; without it, navigations aren't counted.
+- **`remote_ip_header`**: the request header holding the visitor's address;
+  the first address in the list is used. Without it, the connection's peer
+  address is used. Imison doesn't check which proxy set the header, so a
+  spoofed one can only inflate the counts. The LiveView socket shares only
+  `x-*` headers, so with a header like `cf-connecting-ip` navigations fall
+  back to the peer address and count as a different visitor than the page
+  load.
+- **`analytics_retention_days`** (default 90): pageviews older than this are
+  deleted hourly.
+
+**What's counted**: a GET answered 200 with an HTML page, and a LiveView
+`navigate` or a `patch` that changes the path (a query-only change doesn't
+count). Not counted: bots (by user agent), the dashboard itself, JSON and
+other non-HTML responses, assets, redirects, and pages your CDN serves from
+its cache.
+
+**The numbers**, on the dashboard's Analytics tab for today, 7 or 30 days
+(UTC):
+
+- **Visitors**: a visitor is a hash of a daily salt, the IP and the user
+  agent, so the same person is a new visitor each UTC day. Over 7 or 30 days,
+  someone who came on 3 days counts 3 times.
+- **Visits**: a visitor's pageviews, split after 30 minutes without one.
+  **Bounce rate** is the share of visits with a single pageview.
+- **Visit duration** is estimated from the time between a visit's first and
+  last pageview, so the last page counts as zero.
+- **Top pages and sources**: a source is the referrer's host; links within
+  your app and missing referrers are "Direct / None".
+
+**Privacy**: no cookie is set, and no IP address or user agent is stored:
+only the hash, the path (without the query string), the source and the time.
+Each day's salt is deleted once it's older than yesterday, so visitors
+can't be linked across days.
+
+**The dashboard**: the Analytics tab is at `<path>/analytics`, and the
+overview at `<path>/` shows errors and analytics side by side. More in
+[Configuration](guides/configuration.md#analytics) and
+[Using the dashboard](guides/dashboard.md#analytics).
+
+## Upgrading
+
+From a release without analytics, even if you only track errors:
+
+- The error list moved from `<path>/` to `<path>/errors`; `<path>/` is now an
+  overview of errors and analytics. The daily summary's links point to
+  `<dashboard_url>/errors`.
+- Add a migration calling `Imison.Migration.up(version: 2)` (and
+  `down(version: 2)`) for the analytics tables. See
+  [Migrations](guides/configuration.md#migrations).
+- If you turn analytics on, run `mix imison.install` again for the `/live`
+  socket change, so LiveView navigations are counted.
+- New installs mount the dashboard at `/imison` instead of `/errors`. Your
+  router keeps the path you mounted it at; nothing to change.
+
 ## Documentation
 
 | Guide | What's in it |
 |---|---|
 | [Getting started](guides/getting-started.md) | Installing, the first error, installing by hand |
-| [Using the dashboard](guides/dashboard.md) | Signing in, the error list, statuses, search, the detail page, muting |
+| [Using the dashboard](guides/dashboard.md) | Signing in, the overview, the error list, statuses, search, the detail page, muting, the Analytics tab |
 | [Capturing errors](guides/capturing-errors.md) | What is captured, grouping, `Imison.report/3`, `filter`, `ignore`, `release` |
 | [Notifications](guides/notifications.md) | Rules, email, Slack, webhooks and signature checks, delivery records |
 | [Writing a notification channel](guides/custom-channels.md) | The channel behaviour, a complete PagerDuty example, testing it |
-| [Configuration](guides/configuration.md) | Every option, the route, migrations, retention, several nodes, production checklist |
+| [Configuration](guides/configuration.md) | Every option, the route, migrations, retention, analytics, several nodes, production checklist |
 
 The API reference is in the module docs: `Imison`, `Imison.Config`,
 `Imison.Migration`, `Imison.Web.Router`, `Imison.Notifications.Channel` and

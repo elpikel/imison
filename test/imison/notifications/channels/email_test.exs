@@ -79,7 +79,31 @@ defmodule Imison.Notifications.Channels.EmailTest do
     assert :ok = Email.deliver(message, %{"recipients" => ["ops@example.com"]}, conf)
 
     assert_received {:email, %Swoosh.Email{text_body: body}}
-    assert body =~ "https://app.example.com/errors/errors/20\nand 3 more: https://app.example.com/errors\n\nCame back"
+
+    assert body =~
+             "https://app.example.com/errors/errors/20\nand 3 more: https://app.example.com/errors/errors\n\nCame back"
+  end
+
+  test "a dashboard_url ending in a slash still links the left-out errors to the error list" do
+    conf =
+      Config.new(
+        repo: Repo,
+        username: "admin",
+        password: "secret",
+        mailer: Mailer,
+        from: "errors@example.com",
+        dashboard_url: "https://app.example.com/errors/"
+      )
+
+    new = %{lines: [summary_line(error_id: 1)], total: 2}
+
+    message =
+      Message.digest(conf, %{date: ~D[2026-11-11], new: new, came_back: no_errors(), most_frequent: no_errors()})
+
+    assert :ok = Email.deliver(message, %{"recipients" => ["ops@example.com"]}, conf)
+
+    assert_received {:email, %Swoosh.Email{text_body: body}}
+    assert body =~ "and 1 more: https://app.example.com/errors/errors\n"
   end
 
   defp no_errors, do: %{lines: [], total: 0}

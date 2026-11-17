@@ -3,8 +3,9 @@ defmodule Imison.Test.CaptureHelpers do
   Builders for capture tests: start an instance, wait for its worker to
   record what was cast to it (`wait_for_recording/1`) and to deliver the
   notifications it started (`wait_for_worker/1`) or for a crashing process
-  to exit, list the handlers attached under an instance's name, and read
-  back what was recorded.
+  to exit, make its analytics worker write the pageviews it buffered
+  (`flush_pageviews/1`), list the handlers attached under an instance's
+  name, and read back what was recorded.
   """
 
   import Ecto.Query
@@ -40,6 +41,13 @@ defmodule Imison.Test.CaptureHelpers do
       {task_supervisor, _value} -> task_supervisor |> Task.Supervisor.children() |> Enum.each(&wait_for_exit/1)
       nil -> :ok
     end
+  end
+
+  @spec flush_pageviews(Imison.name()) :: term()
+  def flush_pageviews(name) do
+    worker = name |> Imison.Registry.via(Imison.Analytics.Worker) |> GenServer.whereis()
+    send(worker, :flush)
+    :sys.get_state(worker)
   end
 
   @spec wait_for_exit(pid()) :: :ok

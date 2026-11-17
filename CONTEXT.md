@@ -18,6 +18,10 @@ _Avoid_: user, admin, customer
 Imison's LiveView screens, mounted in the host app's router with `imison_dashboard`.
 _Avoid_: admin panel, UI, web console
 
+**Overview**:
+The dashboard's landing page: a glimpse of errors and of analytics, each linking to its full page.
+_Avoid_: home, summary, dashboard (the whole set of screens)
+
 ### Errors
 
 **Error**:
@@ -89,3 +93,37 @@ _Avoid_: notification log, send
 **Digest**:
 A daily summary of errors sent instead of single notifications.
 _Avoid_: report, summary email
+
+### Analytics
+
+**Pageview**:
+One page shown to a visitor: a full page load of an HTML page, or a LiveView `navigate` or `patch` to a new path; stored as one row in `imison_pageviews`.
+_Avoid_: hit, visit, page load
+
+**Visitor**:
+Who viewed a page, identified only by a hash of the day's salt, the IP and the user agent; the same person counts as a new visitor each UTC day, and no IP, user agent or cookie is stored.
+_Avoid_: user, session, client
+
+**Daily salt**:
+The random value mixed into the visitor hash for one UTC day, stored in the database so every node computes the same visitor; kept for today and yesterday only, so visitors can't be linked across days.
+_Avoid_: key, secret
+
+**Visit**:
+A visitor's pageviews with no gap longer than 30 minutes. Within a range, a visit that started before the range counts only from its first pageview inside it, and a visit crossing midnight UTC splits in two, because the visitor changes with the day.
+_Avoid_: session
+
+**Visit duration**:
+The time from a visit's first pageview to its last; the time spent on the last page is unknown and counts as zero, so a bounce lasts zero seconds.
+_Avoid_: session length, time on site
+
+**Bounce**:
+A visit with a single pageview.
+_Avoid_: exit
+
+**Range**:
+The span the analytics are shown for: today, the last 7 days or the last 30 days, in whole UTC days ending now.
+_Avoid_: timeframe, window
+
+**Source**:
+Where a pageview came from: the referrer's host without `www.`, or none (shown as "Direct / None") when there is no referrer or it's the app's own host.
+_Avoid_: referrer, channel (a notification term)

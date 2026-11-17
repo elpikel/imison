@@ -16,7 +16,8 @@ defmodule Imison.Notifications.Channels.Slack do
   error. The daily digest is "Daily summary for <date> (UTC)" with the
   sections "New errors", "Came back" and "Most frequent", one line per
   listed error (kind, message, that day's count, location and its link) and
-  "and N more" for the errors a section leaves out. The test message sent
+  "and N more", linking to the dashboard's error list, for the errors a
+  section leaves out. The test message sent
   from the Notifications screen says that Slack delivery works.
 
   The error's kind, message and location are cut to their first line and
@@ -110,11 +111,11 @@ defmodule Imison.Notifications.Channels.Slack do
   defp headline(%Message{trigger: :still_happening, last_seen_at: last_seen_at}),
     do: "*Still happening*: last seen at #{Format.utc_time(last_seen_at)}"
 
-  defp digest_section(title, %{lines: []}, _dashboard_url), do: "*#{title}*\nNone."
+  defp digest_section(title, %{lines: []}, _error_list_url), do: "*#{title}*\nNone."
 
-  defp digest_section(title, %{lines: lines, total: total}, dashboard_url) do
+  defp digest_section(title, %{lines: lines, total: total}, error_list_url) do
     ["*#{title}*" | Enum.map(lines, &digest_line/1)]
-    |> Enum.concat([left_out(total - length(lines), dashboard_url)])
+    |> Enum.concat([left_out(total - length(lines), error_list_url)])
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")
   end
@@ -130,11 +131,11 @@ defmodule Imison.Notifications.Channels.Slack do
     |> Enum.join(" ")
   end
 
-  defp left_out(0, _dashboard_url), do: nil
+  defp left_out(0, _error_list_url), do: nil
   defp left_out(count, nil), do: "and #{Format.with_thousands_separators(count)} more"
 
-  defp left_out(count, dashboard_url),
-    do: "and #{Format.with_thousands_separators(count)} more: #{link(dashboard_url, "Open in Imison")}"
+  defp left_out(count, error_list_url),
+    do: "and #{Format.with_thousands_separators(count)} more: #{link(error_list_url, "Open in Imison")}"
 
   defp occurrences(1), do: "1 occurrence"
   defp occurrences(count), do: "#{Format.with_thousands_separators(count)} occurrences"

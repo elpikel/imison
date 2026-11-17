@@ -15,8 +15,8 @@ defmodule Imison.Notifications.Message do
   the `dashboard_url` option isn't set.
 
   `summary` is set only for the daily digest (and `nil` for every other
-  message): the UTC `date` it covers, `url`, the dashboard's error list
-  (`nil` without `dashboard_url`), and three sections: the errors first seen
+  message): the UTC `date` it covers, `url`, the link to the dashboard's
+  error list (`nil` without `dashboard_url`), and three sections: the errors first seen
   that day (`new`, oldest first), the errors that came back that day
   (`came_back`) and the errors that occurred most that day (`most_frequent`,
   most first). Each section is `%{lines: [...], total: n}`: `lines` holds at
@@ -122,7 +122,7 @@ defmodule Imison.Notifications.Message do
       daily_summary
       |> Map.take([:new, :came_back, :most_frequent])
       |> Map.new(fn {name, section} -> {name, with_error_urls(section, dashboard_url)} end)
-      |> Map.merge(%{date: date, url: dashboard_url})
+      |> Map.merge(%{date: date, url: error_list_url(dashboard_url)})
 
     %__MODULE__{
       trigger: :digest,
@@ -140,6 +140,9 @@ defmodule Imison.Notifications.Message do
     do: %{section | lines: Enum.map(lines, &with_error_url(&1, dashboard_url))}
 
   defp with_error_url(line, dashboard_url), do: Map.put(line, :url, error_url(dashboard_url, line.error_id))
+
+  defp error_list_url(nil), do: nil
+  defp error_list_url(dashboard_url), do: Paths.errors(dashboard_url)
 
   defp error_url(nil, _error_id), do: nil
   defp error_url(dashboard_url, error_id), do: Paths.error(dashboard_url, error_id)

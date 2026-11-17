@@ -15,7 +15,7 @@ defmodule Imison.Web.ErrorLiveTest do
     start_imison(name: Dashboard, enabled: false)
     error = record(kind: "KeyError", message: "key :customer_id not found")
     conn = sign_in("/errors", "admin", "secret")
-    {:ok, list, _html} = live(conn, "/errors")
+    {:ok, list, _html} = live(conn, "/errors/errors")
 
     {:ok, detail, _html} =
       list
@@ -280,13 +280,37 @@ defmodule Imison.Web.ErrorLiveTest do
     assert panel(view, "Logger metadata") == %{"note" => "<script>alert(1)</script>"}
   end
 
+  test "Back to errors on the detail page opens the error list" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+    conn = sign_in("/errors", "admin", "secret")
+    {:ok, detail, _html} = live(conn, "/errors/errors/#{error.id}")
+
+    {:ok, list, _html} =
+      detail
+      |> element(".back", "Back to errors")
+      |> render_click()
+      |> follow_redirect(conn, "/errors/errors")
+
+    assert has_element?(list, ".error-row .error-row__kind", "KeyError")
+  end
+
+  test "the detail page keeps Errors marked in the nav, linking to the error list" do
+    start_imison(name: Dashboard, enabled: false)
+    error = record(kind: "KeyError")
+
+    {:ok, view, _html} = live(sign_in("/errors", "admin", "secret"), "/errors/errors/#{error.id}")
+
+    assert has_element?(view, ".nav .nav__link[href='/errors/errors'][aria-current=page]", "Errors")
+  end
+
   test "opening an error that doesn't exist sends the developer back to the list with a message" do
     start_imison(name: Dashboard, enabled: false)
     error = record(kind: "KeyError")
     Repo.delete!(error)
     conn = sign_in("/errors", "admin", "secret")
 
-    {:ok, view, _html} = conn |> live("/errors/errors/#{error.id}") |> follow_redirect(conn, "/errors")
+    {:ok, view, _html} = conn |> live("/errors/errors/#{error.id}") |> follow_redirect(conn, "/errors/errors")
 
     assert has_element?(view, ".flash--error[role=alert]", "That error doesn't exist. It may have been deleted.")
     assert has_element?(view, ".page__title", "Errors")
@@ -297,7 +321,7 @@ defmodule Imison.Web.ErrorLiveTest do
     conn = sign_in("/errors", "admin", "secret")
 
     for id <- ["abc", "12abc", "99999999999999999999"] do
-      {:ok, view, _html} = conn |> live("/errors/errors/#{id}") |> follow_redirect(conn, "/errors")
+      {:ok, view, _html} = conn |> live("/errors/errors/#{id}") |> follow_redirect(conn, "/errors/errors")
 
       assert has_element?(view, ".flash--error", "That error doesn't exist. It may have been deleted.")
     end

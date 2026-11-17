@@ -54,7 +54,7 @@ defmodule Imison.Web.SessionControllerTest do
       |> post("/errors/login", %{"_csrf_token" => token, "username" => "admin", "password" => "secret"})
 
     assert redirected_to(conn) == "/errors"
-    assert {:ok, view, _html} = conn |> next_browser_conn() |> live("/errors")
+    assert {:ok, view, _html} = conn |> next_browser_conn() |> live("/errors/errors")
     assert has_element?(view, ".page__title", "Errors")
   end
 
@@ -128,7 +128,7 @@ defmodule Imison.Web.SessionControllerTest do
 
     another_node_conn = put_req_cookie(browser_conn(), "_imison_test_key", session_cookie)
 
-    assert {:ok, view, _html} = live(another_node_conn, "/errors")
+    assert {:ok, view, _html} = live(another_node_conn, "/errors/errors")
     assert has_element?(view, ".page__title", "Errors")
   end
 

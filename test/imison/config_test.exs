@@ -45,7 +45,10 @@ defmodule Imison.ConfigTest do
              enabled: true,
              filter: ["password", "token", "secret", "authorization", "cookie"],
              ignore: [],
-             prefix: "public"
+             prefix: "public",
+             analytics: false,
+             analytics_retention_days: 90,
+             remote_ip_header: nil
            } = config
   end
 
@@ -66,7 +69,10 @@ defmodule Imison.ConfigTest do
         enabled: false,
         filter: ["api_key"],
         ignore: [ArgumentError],
-        prefix: "private"
+        prefix: "private",
+        analytics: true,
+        analytics_retention_days: 14,
+        remote_ip_header: "x-forwarded-for"
       )
 
     assert %Config{
@@ -81,7 +87,10 @@ defmodule Imison.ConfigTest do
              enabled: false,
              filter: ["api_key"],
              ignore: [ArgumentError],
-             prefix: "private"
+             prefix: "private",
+             analytics: true,
+             analytics_retention_days: 14,
+             remote_ip_header: "x-forwarded-for"
            } = config
   end
 
@@ -179,6 +188,24 @@ defmodule Imison.ConfigTest do
   test "a prefix that isn't a string is refused naming :prefix" do
     assert_raise ArgumentError, ~r/expected :prefix to be a string, got: :private/, fn ->
       Config.new(repo: Repo, username: "admin", password: "secret", prefix: :private)
+    end
+  end
+
+  test "an analytics flag that isn't a boolean is refused naming :analytics" do
+    assert_raise ArgumentError, ~r/expected :analytics to be a boolean, got: "on"/, fn ->
+      Config.new(repo: Repo, username: "admin", password: "secret", analytics: "on")
+    end
+  end
+
+  test "an analytics_retention_days that isn't a positive integer is refused naming :analytics_retention_days" do
+    assert_raise ArgumentError, ~r/expected :analytics_retention_days to be a positive integer, got: 0/, fn ->
+      Config.new(repo: Repo, username: "admin", password: "secret", analytics_retention_days: 0)
+    end
+  end
+
+  test "a remote_ip_header that isn't a string is refused naming :remote_ip_header" do
+    assert_raise ArgumentError, ~r/expected :remote_ip_header to be one of/, fn ->
+      Config.new(repo: Repo, username: "admin", password: "secret", remote_ip_header: :x_forwarded_for)
     end
   end
 
